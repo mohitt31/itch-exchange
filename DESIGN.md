@@ -494,6 +494,73 @@ during a replay is a multi-microsecond outlier, and those outliers land in
 exactly the percentile the project is meant to report honestly. Prefaulting
 keeps p99.9 a measurement of the book rather than of the page allocator.
 
+## 17. The ladder, built
+
+`PriceLadder` implements what section 15 measured. Per side:
+
+| piece | size | why |
+|---|---|---|
+| occupancy bitset | 4096 bits = 512 B = 4 cache lines | finding the next best after a level clears is a `clz`/`ctz` scan of u64 words, usually one word |
+| slot array | 4096 x 4-byte handle = 16 KiB | one M4 page, one TLB entry |
+| overflow | `std::map` | ordered, see below |
+
+**The invariant that makes lookup a single probe:** a level is in the window if
+and only if its price is penny-aligned and its tick is in `[base, base + 4096)`.
+Everything else is in the overflow map. `find` tests the range and probes
+exactly one of the two, never both.
+
+Keeping that true is the whole job of rebasing, and it has to move levels in
+*both* directions: levels that fall out of the new window go to the overflow
+map, and levels the window has just slid over come back in. Missing the second
+direction would leave a level in the overflow map that `find` no longer looks
+for, so lookups would start silently missing. `ladder_pulls_levels_back_in_when
+_the_window_returns` exists for exactly that.
+
+Rebasing walks the occupied bits, not the 4096 slots, so it costs O(live levels)
+-- at most a few thousand -- and never memmoves the array.
+
+### Why the overflow map is ordered
+
+`std::map`, not a hash map, and not because of lookup speed. When the entire
+book is outside the window, `best()` still has to be correct, and an unordered
+container cannot answer "highest price present". That case is real: in
+pre-market the only resting orders can be stub quotes, and the window is
+somewhere else entirely.
+
+The overflow map is cold and tiny by construction -- the measurement says it
+carries 0.1% to 1.1% of insertions plus the stub quotes -- so the node-per-entry
+cost it brings is paid on traffic that was never going to be fast anyway.
+
+### Two bugs the tests found
+
+**The window could be stranded by a sub-penny inside.** `maybe_rebase` bailed
+out when the best price was not penny-aligned, on the reasoning that the window
+cannot store such a price anyway. But the anchor and the storage are different
+questions: a sub-penny inside still says where the action is, and the aligned
+prices around it are exactly what the window should cover. With the bail-out,
+a ladder whose first resting price was sub-penny never rebased at all and every
+subsequent aligned insert went to the overflow map. The anchor is now
+`tick_of(best())` regardless of alignment.
+
+**`best()` was `noexcept` and contained an assertion.** In the test build the
+assert handler throws, so that combination calls `std::terminate` and the misuse
+test crashed the binary instead of passing. The rule now is: a function
+containing an assertion is not marked `noexcept`, and
+`tools/check_noexcept_asserts.py` enforces it in CI. Nowhere in this codebase
+does the annotation buy anything on such a function.
+
+### One test that only failed in release
+
+`ladder_misuse_is_detected` originally expected a duplicate-price insert to
+assert. It does -- at invariant level 1 and above, because detecting a duplicate
+costs a full `find()` on the insert path, which is the hot path. Level 0 is
+where the benchmarks run and where that check is meant to be absent, so it is
+`ITCH_INVARIANT` and not `ITCH_ASSERT`.
+
+The test now says so, and skips at level 0. This is the three-level assertion
+scheme from section 2 doing its job: the failure was the test asserting a cost
+the design deliberately does not pay in release.
+
 ---
 
 ## Open, to be settled by measurement

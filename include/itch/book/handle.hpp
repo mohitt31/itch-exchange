@@ -44,7 +44,8 @@ public:
 
     constexpr Handle() noexcept = default;
 
-    static constexpr Handle make(u32 index, u8 generation) noexcept {
+    // Not noexcept: it asserts, and see the note on PriceLadder::best().
+    static constexpr Handle make(u32 index, u8 generation) {
         ITCH_ASSERT(index < kMaxCapacity);
         return Handle{(index << kGenerationBits) | generation};
     }

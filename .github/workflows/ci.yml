@@ -41,6 +41,8 @@ jobs:
         run: ./tools/check_no_float.sh
       - name: Headers are self-contained
         run: ./tools/check_headers_selfcontained.sh
+      - name: No noexcept function contains an assertion
+        run: ./tools/check_noexcept_asserts.sh
       - name: Generated wire header is up to date
         run: |
           python3 tools/gen_wire.py tools/itch50_fields.json /tmp/messages.hpp

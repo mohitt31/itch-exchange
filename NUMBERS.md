@@ -147,6 +147,9 @@ configurations, plus 451 `static_assert`s on message sizes and field offsets.
 | `test_gzip` | 6 |
 | `test_map_book` | 15 |
 | `test_pool` | 17 |
+| `test_ladder` | 11 |
+
+Total 102 after slice 7 (price ladder).
 
 The `tsan` result is **trivially clean**: the pipeline is single-threaded by
 design and the cut list forbids threading inside the book. The configuration is
