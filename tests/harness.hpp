@@ -159,6 +159,8 @@ std::string describe(const char* a_txt, const char* op, const char* b_txt, const
 #define ITCH_REQUIRE_NE(a, b) ITCH_DETAIL_BINOP(a, !=, b, true)
 #define ITCH_REQUIRE_LT(a, b) ITCH_DETAIL_BINOP(a, <, b, true)
 #define ITCH_REQUIRE_LE(a, b) ITCH_DETAIL_BINOP(a, <=, b, true)
+#define ITCH_REQUIRE_GT(a, b) ITCH_DETAIL_BINOP(a, >, b, true)
+#define ITCH_REQUIRE_GE(a, b) ITCH_DETAIL_BINOP(a, >=, b, true)
 
 // Asserts that the statement trips an ITCH_ASSERT.
 #define ITCH_REQUIRE_ASSERT(stmt)                                                      \

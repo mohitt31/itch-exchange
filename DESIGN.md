@@ -227,6 +227,89 @@ including `<compare>` and compiled anyway, because every existing translation
 unit happened to include something that pulled it in first. It surfaced only
 when the header was compiled alone. Now CI compiles all of them alone.
 
+## 11. Two read paths, checked against each other
+
+`MappedFile` maps the whole file and `FrameCursor` walks it with no copying at
+all. `FrameReader<Source>` owns a buffer, refills it from a byte source and
+moves the straddling tail to the front. Two shapes because two access patterns:
+mmap is addressable up front, gzip and stdin are not.
+
+The mapped path is what benchmarks use. Putting inflate inside a timing loop
+would be measuring inflate.
+
+They are not trusted to agree, they are tested to. `test_framing` runs the same
+input through both at chunk sizes of 1, 3, 7, 64 and 4096 bytes, so every
+message is forced to straddle a refill, and requires the frame sequences to be
+byte-identical. `test_gzip` does the same through a real zlib stream.
+
+The buffer must hold one whole framed message or a straddling message could
+never be completed. `kMinBufferSize` is `kMaxMessageLength + 2`, and the
+constructor asserts it rather than documenting it.
+
+## 12. Framing validates, it does not just delimit
+
+`FrameCursor` compares each message's two-byte length prefix against the length
+declared for its type byte, and distinguishes four failures: a length that
+disagrees with the type, an unknown type, a zero length, and a truncated tail.
+It is a table lookup and a compare.
+
+That check is what makes a full pass over the real feed a test of all 23 layout
+structs, hundreds of millions of times, rather than a test of 23 `static_assert`s
+that only prove the header agrees with itself.
+
+`NeedMore` and `Malformed` are kept apart deliberately. A truncated tail is
+expected -- the corpus is a byte range of a gzip stream and ends mid-message by
+construction -- while a length that disagrees with its type means the stream is
+lost. A malformed frame is not consumed, so the caller can report where it
+happened instead of guessing.
+
+## 13. Views decode one field at a time
+
+`views.hpp` is generated alongside `messages.hpp`. A view is a bare pointer;
+each accessor decodes exactly the field asked for, at `offsetof` on the layout
+struct. A handler that only wants the order reference pays for one load and one
+`rev`, not for a 36-byte decode.
+
+Dispatch uses `if constexpr (requires { handler.on_add_order(v); })`, so a
+handler implements only the messages it cares about. No virtual calls, no empty
+overrides to inherit, and a handler that ignores 20 of the 23 types compiles to
+a switch with 20 empty arms.
+
+**Rejected:** a `std::variant` of decoded messages (copies every field, including
+the ones nobody reads); a virtual handler interface (an indirect call per
+message on the hottest loop in the program).
+
+## 14. A permissive error path hid a real bug for an hour
+
+Two bugs in the gzip source, and the second one is the one worth recording.
+
+**The bug.** zlib's inflate state holds a back-pointer to the `z_stream` it was
+initialised with, and `inflate()` rejects the stream when that pointer no longer
+matches. So a `z_stream` cannot be moved by value. The move constructor copied
+it, every `inflate` call returned `Z_STREAM_ERROR`, and the decompressor was
+completely dead. The fix is a `unique_ptr<z_stream>`, so the object stays movable
+while the address zlib knows about stays put.
+
+**Why it was not obvious.** The read loop treated *any* non-`Z_OK` return as
+"input must have been truncated, stop here", because the corpus is a truncated
+gzip prefix and that case has to be tolerated. A totally dead decompressor
+therefore looked exactly like a clean, empty file: no error, no exception, exit
+status zero, a neatly formatted report of zero messages.
+
+`allow_truncated` now forgives exactly one thing: the compressed input ending
+before `Z_STREAM_END`. Every `inflate` error throws, whatever the flag says.
+`Z_BUF_ERROR` with bytes still unread also throws, because no progress with
+input available is not a refill condition -- and the old code would have spun on
+it forever.
+
+The lesson is the general one: an error path that is permissive because one
+legitimate case needs it will swallow the illegitimate cases too. Forgive the
+specific condition, never the category.
+
+`test_gzip.cpp` now covers both. Restoring the permissive branch for one build
+fails `gzip_corrupt_input_always_throws` and `gzip_bad_header_throws_immediately`,
+which was checked rather than assumed.
+
 ---
 
 ## Open, to be settled by measurement

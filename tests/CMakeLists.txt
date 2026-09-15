@@ -11,3 +11,9 @@ endfunction()
 
 itch_add_test(test_core)
 itch_add_test(test_wire)
+itch_add_test(test_framing)
+itch_add_test(test_parser)
+
+# Only this suite needs zlib.
+itch_add_test(test_gzip)
+target_link_libraries(test_gzip PRIVATE ZLIB::ZLIB)

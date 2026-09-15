@@ -50,5 +50,12 @@ target_include_directories(itch PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(itch PUBLIC ITCH_INVARIANT_LEVEL=${ITCH_INVARIANT_LEVEL})
 target_link_libraries(itch PUBLIC itch_arch PRIVATE itch_warnings)
 
+find_package(ZLIB REQUIRED)
+
+add_library(itch_gzip INTERFACE)
+target_link_libraries(itch_gzip INTERFACE itch ZLIB::ZLIB)
+
+add_subdirectory(apps)
+
 enable_testing()
 add_subdirectory(tests)

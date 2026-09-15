@@ -835,6 +835,36 @@ static_assert(sizeof(DirectListingWithCapitalRaise::upper_price_range_collar) ==
     }
 }
 
+// Short name for a message type, for reporting. "unknown" if not a type.
+[[nodiscard]] constexpr const char* type_name(char type) noexcept {
+    switch (type) {
+        case 'S': return "SystemEvent";
+        case 'R': return "StockDirectory";
+        case 'H': return "StockTradingAction";
+        case 'Y': return "RegShoRestriction";
+        case 'L': return "MarketParticipantPosition";
+        case 'V': return "MwcbDeclineLevel";
+        case 'W': return "MwcbStatus";
+        case 'K': return "IpoQuotingPeriodUpdate";
+        case 'J': return "LuldAuctionCollar";
+        case 'h': return "OperationalHalt";
+        case 'A': return "AddOrder";
+        case 'F': return "AddOrderWithMpid";
+        case 'E': return "OrderExecuted";
+        case 'C': return "OrderExecutedWithPrice";
+        case 'X': return "OrderCancel";
+        case 'D': return "OrderDelete";
+        case 'U': return "OrderReplace";
+        case 'P': return "TradeNonCross";
+        case 'Q': return "CrossTrade";
+        case 'B': return "BrokenTrade";
+        case 'I': return "Noii";
+        case 'N': return "RetailPriceImprovement";
+        case 'O': return "DirectListingWithCapitalRaise";
+        default: return "unknown";
+    }
+}
+
 [[nodiscard]] constexpr bool is_known_type(char type) noexcept {
     return message_length(type) != 0;
 }
