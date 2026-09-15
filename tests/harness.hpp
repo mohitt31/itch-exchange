@@ -124,7 +124,14 @@ std::string describe(const char* a_txt, const char* op, const char* b_txt, const
                                                               __FILE__, __LINE__};     \
     static void itch_test_fn_##name()
 
-#define ITCH_TEST_CONTEXT(note) const ::itch::test::Context itch_ctx_##__LINE__{note}
+// Two levels, because ## suppresses expansion of its operands: a single level
+// would paste the literal text __LINE__ and two contexts in one scope would
+// collide instead of nesting.
+#define ITCH_DETAIL_CAT2(a, b) a##b
+#define ITCH_DETAIL_CAT(a, b) ITCH_DETAIL_CAT2(a, b)
+
+#define ITCH_TEST_CONTEXT(note) \
+    const ::itch::test::Context ITCH_DETAIL_CAT(itch_ctx_, __LINE__) { note }
 
 #define ITCH_DETAIL_BOOL(expr, fatal)                                                  \
     do {                                                                               \

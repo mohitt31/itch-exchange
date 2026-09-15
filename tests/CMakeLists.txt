@@ -17,3 +17,4 @@ itch_add_test(test_parser)
 # Only this suite needs zlib.
 itch_add_test(test_gzip)
 target_link_libraries(test_gzip PRIVATE ZLIB::ZLIB)
+itch_add_test(test_map_book)
