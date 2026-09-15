@@ -56,6 +56,7 @@ add_library(itch_gzip INTERFACE)
 target_link_libraries(itch_gzip INTERFACE itch ZLIB::ZLIB)
 
 add_subdirectory(apps)
+add_subdirectory(bench)
 
 enable_testing()
 add_subdirectory(tests)

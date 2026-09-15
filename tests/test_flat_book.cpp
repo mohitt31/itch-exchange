@@ -215,12 +215,12 @@ ITCH_TEST(flat_pool_exhaustion_is_an_assertion) {
     ITCH_REQUIRE_ASSERT(b.add(17, Side::Buy, 100'0000, 100));
 }
 
-ITCH_TEST(flat_matches_map_and_naive_under_random_operations) {
-    constexpr u64 kSeed = 0x5EED0040;
+template <class Book>
+static void random_differential(u64 kSeed) {
     ITCH_TEST_CONTEXT("seed=" + std::to_string(kSeed));
     itch::test::Rng rng{kSeed};
 
-    FlatBook  fast;
+    Book      fast;
     MapBook   ref;
     NaiveBook slow;
     std::vector<OrderRef> live;
@@ -318,10 +318,68 @@ ITCH_TEST(flat_matches_map_and_naive_under_random_operations) {
     fast.validate();
 
     // The run has to have actually exercised the interesting paths.
-    ITCH_CHECK_GT(fast.ladder(Side::Buy).rebases(), u64{0});
-    ITCH_CHECK_GT(fast.ladder(Side::Buy).overflow_count() +
-                      fast.ladder(Side::Sell).overflow_count(),
-                  std::size_t{0});
     ITCH_CHECK_GT(fast.best_recomputes(), u64{0});
     ITCH_CHECK_GT(fast.order_high_water(), u32{0});
+    ITCH_CHECK_GT(fast.ladder(Side::Buy).size() + fast.ladder(Side::Sell).size(), u32{0});
+}
+
+ITCH_TEST(flat_matches_map_and_naive_under_random_operations) {
+    random_differential<FlatBook>(0x5EED0040);
+}
+
+// Same driver, same seed, with the ladder replaced by an AVL tree. Both must
+// agree with MapBook and NaiveBook, which means they agree with each other.
+ITCH_TEST(avl_matches_map_and_naive_under_random_operations) {
+    random_differential<AvlBook>(0x5EED0040);
+}
+
+ITCH_TEST(identity_hashed_index_matches_too) {
+    random_differential<FlatBookIdentity>(0x5EED0041);
+}
+
+// The ladder-specific counters, checked once on the implementation that has them.
+ITCH_TEST(flat_exercises_rebasing_and_overflow) {
+    FlatBook b;
+    itch::test::Rng rng{0x5EED0042};
+    i64 centre = 100'0000 / 100;
+    for (u64 i = 1; i <= 20000; ++i) {
+        centre += static_cast<i64>(rng.range(0, 6)) - 3;
+        const Side side = rng.chance(50) ? Side::Buy : Side::Sell;
+        const i64  off = static_cast<i64>(rng.range(1, 30));
+        const Price price = rng.chance(2)
+                                ? (side == Side::Buy ? Price{1} : Price{1'999'999'900})
+                                : static_cast<Price>(
+                                      (side == Side::Buy ? centre - off : centre + off) * 100);
+        if (price == 0 || b.contains(i)) {
+            continue;
+        }
+        b.add(i, side, price, 100);
+        if (rng.chance(45)) {
+            b.remove(i);
+        }
+    }
+    ITCH_CHECK_GT(b.ladder(Side::Buy).rebases(), u64{0});
+    ITCH_CHECK_GT(b.ladder(Side::Buy).overflow_count() +
+                      b.ladder(Side::Sell).overflow_count(),
+                  std::size_t{0});
+    b.validate();
+}
+
+// The AVL tree has to actually stay balanced under the same traffic.
+ITCH_TEST(avl_stays_balanced) {
+    AvlBook b;
+    // Ascending prices are the worst case for an unbalanced tree.
+    for (u64 i = 1; i <= 8000; ++i) {
+        b.add(i, Side::Buy, static_cast<Price>(100'0000 + i * 100), 100);
+    }
+    const u32 h = b.ladder(Side::Buy).height();
+    // AVL height is bounded by about 1.44 log2(n+2); for 8000 that is under 19.
+    ITCH_CHECK_LE(h, u32{19});
+    ITCH_CHECK_GT(h, u32{12});
+    b.validate();
+    for (u64 i = 1; i <= 8000; ++i) {
+        b.remove(i);
+    }
+    ITCH_CHECK(b.empty(Side::Buy));
+    b.validate();
 }

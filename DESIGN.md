@@ -659,6 +659,92 @@ slot, and the book would go quietly wrong. With it, the run stops at the exact
 operation that did it. That is the entire argument for generation-checked
 handles, demonstrated rather than asserted.
 
+## 19. Benchmark methodology, and three things that were wrong first
+
+The numbers are in NUMBERS.md. What follows is how they were arrived at,
+including the attempts that produced misleading results before they were fixed.
+
+### What is compared
+
+`AvlBook` is `FlatBook` with **only** the price-to-level structure swapped: same
+pools, same intrusive queues, same order index, a hand-written AVL tree over a
+node pool instead of the ladder. That isolates one variable and answers "what
+did the ladder buy?" -- **1.46x**.
+
+`MapBook` is the textbook implementation and changes the level structure, the
+queue representation, the allocator and the order index all at once. That
+answers the blunter "what did the whole design buy?" -- **2.29x**.
+
+Both are worth knowing and they are not the same number. Quoting only the second
+would be the easy, misleading choice.
+
+The AVL baseline is deliberately strong: its nodes come from a pooled vector
+with a free list, not from the allocator, so the comparison is a tree walk
+against an array index rather than a tree against `malloc`.
+
+### Mistake 1: measuring implementations in sequence
+
+The first version timed all of `FlatBook`'s rounds, then all of `AvlBook`'s,
+then all of `MapBook`'s. FlatBook's throughput came out anywhere between 16.7
+and 26.0 million ops/s across invocations -- a 56% spread -- while MapBook's
+varied by 3.6%.
+
+That was not noise. This machine's throughput climbs over the first seconds of a
+process, and measuring FlatBook first gave it the cold period **every time**. A
+systematic bias, always in the same direction, dressed up as variance.
+
+Rounds are now interleaved round-robin, with two full warmup passes of all three
+beforehand. Medians across five separate invocations now agree to within 5%.
+
+### Mistake 2: injecting above the slowest saturation point
+
+The first latency run picked the rate as 50% of *FlatBook's* saturation --
+9.4 million ops/s. MapBook saturates at 8.7 million, so its open-loop queue grew
+without bound and its p50 came out at **2.8 milliseconds**. That figure is
+correct and completely useless: it measures the backlog, not the operation.
+
+The rate is now 50% of the *slowest* implementation's measured throughput, which
+is why throughput is measured before latency and not alongside it.
+
+### Mistake 3: quoting a tail this machine cannot measure
+
+The benchmark runs the identical pacing loop with no book operation in it and
+reports it as a **harness floor** row. That row is what exposed the problem.
+
+Across five identical invocations, FlatBook's p99 ranged from 1,934 to 4,558 ns
+and its p99.9 from 9,116 to 27,336 ns. In one run the *empty* loop's p99 was
+454 ns, against 70-85 ns in the others.
+
+macOS has no `isolcpus`, no `nohz_full`, and no way to pin a thread to a core.
+The benchmark requests `QOS_CLASS_USER_INTERACTIVE`, which is as close as this
+machine gets, and it is not close enough.
+
+**So no p99 or p99.9 number from this machine is quoted anywhere.** The p50 is
+quoted, because it sits at 73-90 ns against a measured 41 ns timer floor and
+varies by under 20%. The tail is Linux box work and until that runs, the number
+does not exist. The observed ranges are in NUMBERS.md as evidence for *why*,
+labelled as such.
+
+### Other things the harness does
+
+- **Both dead-code defences.** Each timed pass ends by computing the book digest
+  through `do_not_optimize`, and the benchmark exits if that digest is zero --
+  an impossible value for a book that was actually built.
+- **The benchmark is also a correctness test.** All three implementations must
+  produce the same digest or it refuses to print a result. A fast wrong answer
+  is not a result.
+- **It refuses to lie about the build.** If `NDEBUG` is not defined the header
+  line says the numbers are meaningless rather than printing them plainly.
+- **The timer is measured, not assumed.** `timer_resolution_ns()` reports the
+  smallest non-zero gap between consecutive clock reads (41 ns here) and
+  `timer_call_cost_ns()` the cost of a read (about 15 ns). Both are printed
+  above every result, so a latency near the floor can be read for what it is.
+- **The workload is real.** 475,247 actual QQQ operations from the feed, not
+  generated traffic. A synthetic workload with a uniform price distribution
+  would benchmark a book nobody is running -- the measured feed is 42% adds and
+  39% deletes, half of all insertions land exactly on the inside, and every
+  symbol carries permanent stub quotes.
+
 ---
 
 ## Open, to be settled by measurement

@@ -4,7 +4,7 @@ Every number in the README appears here with the command that produced it, the
 machine it ran on, and the build flags. Nothing in this file is an estimate.
 Where something has not been measured yet it says so.
 
-`bench/reproduce.sh` regenerates the whole file. It does not exist yet.
+`bench/reproduce.sh` regenerates every number here in one command.
 
 ---
 
@@ -226,16 +226,86 @@ pennies, measured before the order is applied.
 These decide the ladder geometry; the reasoning is in DESIGN.md section 15.
 They will be re-measured on the complete file, which is still downloading.
 
+## Three-way book benchmark
+
+```
+./build/release/bench/bench_book --symbol QQQ --runs 9 <corpus.gz>
+```
+
+Machine: Apple M4, macOS 26.5, Apple clang 21.0.0.
+Build: `release` preset, `-O3 -DNDEBUG -mcpu=native` (resolves to `-mcpu=apple-m4`),
+`ITCH_INVARIANT_LEVEL=0`.
+Workload: QQQ's 475,247 real book operations from the 490 MB prefix
+(228,599 adds, 216,732 deletes, 22,689 replaces, 6,619 executions, 608 cancels).
+All three implementations produce book digest `5e2e353d68d726bd`; the benchmark
+refuses to report if they disagree.
+
+### Throughput -- reliable
+
+Closed loop, nine rounds, **interleaved** between implementations. Medians
+across five separate process invocations varied by under 5%.
+
+| | median ops/s | ns/op | slowest round | fastest round | vs FlatBook |
+|---|---|---|---|---|---|
+| FlatBook | 20,010,189 | 50.0 | 18,213,640 | 21,491,868 | 1.00x |
+| AvlBook | 13,726,024 | 72.9 | 13,036,851 | 14,201,403 | **1.46x** |
+| MapBook | 8,748,024 | 114.3 | 8,615,094 | 8,787,891 | **2.29x** |
+
+`AvlBook` differs from `FlatBook` in exactly one thing: the price-to-level
+structure. Same pools, same intrusive queues, same order index. So 1.46x is
+what the ladder bought. `MapBook` is the textbook implementation and changes
+everything at once, so 2.29x is what the whole design bought.
+
+### Latency p50 -- reliable
+
+Open loop at 4,374,012 ops/s (50% of the slowest implementation's saturation,
+so none is backed up). Measured timer floor is 41 ns and a clock read costs
+about 15 ns, both reported by the benchmark at startup.
+
+p50 across five separate invocations:
+
+| | observed p50 range (ns) | median |
+|---|---|---|
+| harness floor | at or below the 41 ns timer floor | -- |
+| FlatBook | 73 - 90 | **76** |
+| AvlBook | 104 - 110 | **109** |
+| MapBook | 154 - 157 | **155** |
+
+These are well above the timer floor and vary by under 20%, so they are
+measurements. The ratios (1.43x and 2.04x) agree with the throughput ratios.
+
+### Latency p99 and beyond -- NOT reliable on this machine
+
+The benchmark runs the identical pacing loop with **no book operation in it**
+and reports it as a "harness floor" row. Across five invocations:
+
+| | p99 range (ns) | p99.9 range (ns) |
+|---|---|---|
+| harness floor | 70 - 454 | -- |
+| FlatBook | 1,934 - 4,558 | 9,116 - 27,336 |
+
+FlatBook's p99 varies by 2.4x and its p99.9 by 3x between identical runs, and in
+one run the *empty* loop's p99 was 454 ns. macOS has no `isolcpus`, no
+`nohz_full` and no way to pin a thread to a core; the benchmark asks for
+`QOS_CLASS_USER_INTERACTIVE`, which is as close as this machine gets.
+
+**So no p99 or p99.9 figure for this project is quoted from this machine.** The
+tail belongs on the Linux box with core isolation, and until that is run the
+number does not exist. The ranges above are recorded to show why, not as
+results.
+
 ## Not measured yet
 
 Listed so that their absence is explicit rather than quiet.
 
-- Parse throughput on its own, without a decompressor in the loop.
 - All of the above over the complete session rather than a 490 MB prefix.
-- Book update latency: p50, p99, p99.9, for each of the three implementations.
-- Book update throughput for each of the three implementations.
-- Cache-miss and branch-miss counters explaining the ratios between them.
+- Book update p99 and p99.9. Measured here but **scheduler-dominated and not
+  quotable**; see above. **Linux box**, with `isolcpus` and `nohz_full`.
+- Cache-miss and branch-miss counters explaining the 1.46x and 2.29x ratios.
   **Linux box.**
-- Fine-grained p50. **Linux box.**
+- The 24-byte order record variant, against the 32-byte one in use.
+- `IndexHash::Identity` against `IndexHash::Mixed`. Both are built and tested;
+  neither is benchmarked yet.
+- Parse throughput on its own, without a decompressor in the loop.
 - Matching engine throughput and latency.
 - Before/after for the two bottlenecks found by profiling.

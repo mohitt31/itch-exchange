@@ -19,6 +19,7 @@
 #include "itch/book/handle.hpp"
 #include "itch/book/order_index.hpp"
 #include "itch/book/pool.hpp"
+#include "itch/book/avl_level_map.hpp"
 #include "itch/book/price_ladder.hpp"
 #include "itch/book/records.hpp"
 #include "itch/core/assert.hpp"
@@ -26,8 +27,11 @@
 
 namespace itch::book {
 
-template <IndexHash HashChoice = IndexHash::Mixed>
-class FlatBookT {
+// Templated on the price-to-level structure so that the ladder can be swapped
+// for an AVL tree with everything else held constant. That is what makes the
+// three-way benchmark measure one variable rather than four at once.
+template <class LevelMap, IndexHash HashChoice = IndexHash::Mixed>
+class BookT {
 public:
     // Defaults come from the measured peaks: 13,843 live orders and 2,057 live
     // levels on the busiest of three symbols over a partial session. Sized
@@ -35,12 +39,12 @@ public:
     static constexpr u32 kDefaultOrders = 1u << 18;  // 262,144
     static constexpr u32 kDefaultLevels = 1u << 15;  // 32,768
 
-    explicit FlatBookT(u32 order_capacity = kDefaultOrders,
-                       u32 level_capacity = kDefaultLevels)
+    explicit BookT(u32 order_capacity = kDefaultOrders,
+                   u32 level_capacity = kDefaultLevels)
         : orders_(order_capacity),
           levels_(level_capacity),
           index_(order_capacity),
-          ladders_{PriceLadder{Side::Buy}, PriceLadder{Side::Sell}} {}
+          ladders_{LevelMap{Side::Buy}, LevelMap{Side::Sell}} {}
 
     // --- mutations -------------------------------------------------------
 
@@ -149,7 +153,7 @@ public:
     public:
         class Iterator {
         public:
-            Iterator(const FlatBookT* book, OrderHandle h) : book_(book), h_(h) {}
+            Iterator(const BookT* book, OrderHandle h) : book_(book), h_(h) {}
             OrderRef operator*() const { return book_->orders_[h_].ref; }
             Iterator& operator++() {
                 h_ = book_->orders_[h_].next;
@@ -160,17 +164,17 @@ public:
             }
 
         private:
-            const FlatBookT* book_;
-            OrderHandle      h_;
+            const BookT* book_;
+            OrderHandle  h_;
         };
 
-        OrderRange(const FlatBookT* book, OrderHandle head) : book_(book), head_(head) {}
+        OrderRange(const BookT* book, OrderHandle head) : book_(book), head_(head) {}
         [[nodiscard]] Iterator begin() const { return Iterator{book_, head_}; }
         [[nodiscard]] Iterator end() const { return Iterator{book_, OrderHandle{}}; }
 
     private:
-        const FlatBookT* book_;
-        OrderHandle      head_;
+        const BookT* book_;
+        OrderHandle  head_;
     };
 
     // Levels from the inside outwards.
@@ -193,7 +197,7 @@ public:
 
     // --- introspection ---------------------------------------------------
 
-    [[nodiscard]] const PriceLadder& ladder(Side s) const { return ladders_[side_index(s)]; }
+    [[nodiscard]] const LevelMap& ladder(Side s) const { return ladders_[side_index(s)]; }
     [[nodiscard]] const OrderIndex<HashChoice>& index() const { return index_; }
     [[nodiscard]] u32 order_high_water() const noexcept { return orders_.high_water(); }
     [[nodiscard]] u32 level_high_water() const noexcept { return levels_.high_water(); }
@@ -268,7 +272,7 @@ private:
     }
 
     [[nodiscard]] LevelHandle level_for(Side side, Price price) {
-        PriceLadder& lad = ladders_[side_index(side)];
+        LevelMap& lad = ladders_[side_index(side)];
         const LevelHandle existing = lad.find(price);
         if (!existing.is_null()) {
             return existing;
@@ -363,12 +367,18 @@ private:
     Pool<Order, OrderTag>   orders_;
     Pool<Level, LevelTag>   levels_;
     OrderIndex<HashChoice>  index_;
-    PriceLadder             ladders_[2];
+    LevelMap                ladders_[2];
     BookStats               stats_{};
     Price                   best_[2] = {kNoPrice, kNoPrice};
     u64                     best_recomputes_ = 0;
 };
 
-using FlatBook = FlatBookT<IndexHash::Mixed>;
+// The two implementations that differ only in how a price finds its level.
+using FlatBook = BookT<PriceLadder, IndexHash::Mixed>;
+using AvlBook = BookT<AvlLevelMap, IndexHash::Mixed>;
+
+// Same structure, identity hashing instead of splitmix64, for the index
+// benchmark.
+using FlatBookIdentity = BookT<PriceLadder, IndexHash::Identity>;
 
 }  // namespace itch::book
