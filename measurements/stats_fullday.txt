@@ -1,0 +1,66 @@
+input            data/01302019.NASDAQ_ITCH50.gz (gzip, streamed)
+messages         368,366,634
+payload bytes    10,509,149,824
+framed bytes     11,245,883,092
+first timestamp  03:03:59.687760787
+last timestamp   20:05:00.000033998
+elapsed          25.659 s
+throughput       14,356,335 msg/s, 418.0 MiB/s
+
+terminated       clean end of input
+
+type name                                        count    share
+----------------------------------------------------------------
+A    AddOrder                              162,970,455  44.241%
+D    OrderDelete                           158,273,361  42.966%
+U    OrderReplace                           27,222,746   7.390%
+E    OrderExecuted                           8,096,995   2.198%
+X    OrderCancel                             4,669,874   1.268%
+I    Noii                                    3,684,511   1.000%
+F    AddOrderWithMpid                        1,725,898   0.469%
+P    TradeNonCross                           1,326,184   0.360%
+L    MarketParticipantPosition                 193,769   0.053%
+C    OrderExecutedWithPrice                    158,886   0.043%
+Q    CrossTrade                                 17,430   0.005%
+Y    RegShoRestriction                           8,821   0.002%
+H    StockTradingAction                          8,805   0.002%
+R    StockDirectory                              8,714   0.002%
+B    BrokenTrade                                   116   0.000%
+J    LuldAuctionCollar                              62   0.000%
+S    SystemEvent                                     6   0.000%
+V    MwcbDeclineLevel                                1   0.000%
+----------------------------------------------------------------
+     total                                 368,366,634 100.000%
+
+8695 symbols with book activity
+
+symbol     locate          book msgs         all msgs    share
+----------------------------------------------------------------
+QQQ        6449            3,448,973        3,453,285   0.936%
+SPY        7291            3,055,956        3,065,460   0.830%
+IWM        4260            1,968,160        1,969,950   0.534%
+AMD        331             1,862,837        1,879,547   0.506%
+GOOG       3419            1,671,883        1,675,038   0.454%
+AAPL       14              1,656,597        1,668,775   0.450%
+MSFT       5217            1,642,525        1,653,563   0.446%
+GOOGL      3420            1,634,761        1,640,668   0.444%
+SMH        7136            1,481,132        1,482,111   0.402%
+AABA       4               1,416,715        1,419,194   0.385%
+NVDA       5628            1,310,258        1,325,980   0.356%
+EWZ        2672            1,308,911        1,311,688   0.355%
+FB         2728            1,276,526        1,298,062   0.347%
+DIA        2013            1,254,303        1,256,150   0.341%
+MU         5265            1,176,316        1,180,722   0.319%
+INTC       4118            1,162,734        1,165,885   0.316%
+TQQQ       7752            1,154,221        1,155,495   0.313%
+VXXB       8318            1,137,148        1,138,535   0.309%
+UVXY       8082            1,131,106        1,132,027   0.307%
+XLK        8564            1,125,310        1,126,386   0.305%
+XLI        8563            1,101,315        1,103,287   0.299%
+TVIX       7843            1,065,110        1,066,901   0.289%
+AMAT       318               977,417          979,791   0.265%
+XLV        8573              952,140          954,295   0.258%
+AMZN       381               919,809          938,958   0.250%
+
+not seen         K N O W h 
+STATS_DONE

@@ -1,31 +1,31 @@
 machine          Apple M4, macOS, release
 timer resolution 41 ns (measured)
-clock read cost  14.49 ns (measured)
+clock read cost  14.59 ns (measured)
 
-loading workload for QQQ from /private/tmp/claude-501/-Users-mohit/4fff96bd-8a43-453d-a585-56ebbf92c6a0/scratchpad/partial.gz
+loading workload for QQQ from data/01302019.NASDAQ_ITCH50.gz
 symbol           QQQ (locate 6449)
-operations       475,247
-  add 228,599  execute 6,619  cancel 608  delete 216,732  replace 22,689
-book digest      5e2e353d68d726bd (all three agree)
+operations       3,448,973
+  add 1,623,619  execute 55,963  cancel 2,964  delete 1,577,106  replace 189,321
+book digest      a0ed37f623c3aa3f (all three agree)
 
-throughput, closed loop, 9 interleaved rounds
+throughput, closed loop, 7 interleaved rounds
 median reported; the spread is shown because on this machine it is wide
 
                median ops/s      ns/op        slowest        fastest  vs Flat
 ------------------------------------------------------------------------------
-FlatBook         20,010,189       50.0     18,213,640     21,491,868    1.00x
-AvlBook          13,726,024       72.9     13,036,851     14,201,403    1.46x
-MapBook           8,748,024      114.3      8,615,094      8,787,891    2.29x
+FlatBook         30,732,330       32.5     30,324,063     30,894,187    1.00x
+AvlBook          15,130,586       66.1     15,021,435     15,166,262    2.03x
+MapBook           8,175,191      122.3      8,058,407      8,309,904    3.76x
 
-latency per operation, open loop at 4,374,012 ops/s, nanoseconds
+latency per operation, open loop at 4,087,595 ops/s, nanoseconds
 rate is 50% of the slowest implementation's saturation, so none is backed up
 timer floor is 41 ns; a value at or below it is not a measurement
 
                     p50        p99      p99.9     p99.99        max       mean
 --------------------------------------------------------------------------------
-harness floor   <= floor       2034       8550      12388      14838       89.2
-FlatBook             92       4206      32077      46263      47698      311.3
-AvlBook             124       5673      19205      33829      36926      334.7
-MapBook             160       9107      34213      40387      41778      473.7
+harness floor   <= floor         83      13535     197287     234499      140.4
+FlatBook             67        202       9421      98555     132392      126.6
+AvlBook             103        332       7872      12798      20897      135.2
+MapBook             160       4226      52477      75149      77977      400.9
 
 the harness floor row is the same loop with no book operation in it.

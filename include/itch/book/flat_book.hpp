@@ -38,12 +38,25 @@ public:
     // generously because the pools are prefaulted once and never grow.
     static constexpr u32 kDefaultOrders = 1u << 18;  // 262,144
     static constexpr u32 kDefaultLevels = 1u << 15;  // 32,768
+    // Measured, not chosen. The order index has an optimum and both sides of it
+    // are worse: below about 10% load factor the probe chains are short but the
+    // table no longer fits comfortably in cache, and above about 20% the chains
+    // start costing more than the cache does. The sweep is in NUMBERS.md; on
+    // this workload 131,072 entries beats the 524,288 this used to default to
+    // by 1.30x, and beats 16,384 by 1.43x.
+    static constexpr u32 kDefaultIndex = 1u << 16;   // -> 131,072 entries, 2 MiB
 
+    // index_capacity is separate from order_capacity on purpose: see DESIGN.md
+    // section 20. The order pool can be sized generously because it is dense,
+    // but the index is an open-addressed table whose probes land anywhere in it,
+    // so making it larger than the live set needs is how a lookup turns into a
+    // cache miss.
     explicit BookT(u32 order_capacity = kDefaultOrders,
-                   u32 level_capacity = kDefaultLevels)
+                   u32 level_capacity = kDefaultLevels,
+                   u32 index_capacity = kDefaultIndex)
         : orders_(order_capacity),
           levels_(level_capacity),
-          index_(order_capacity),
+          index_(index_capacity),
           ladders_{LevelMap{Side::Buy}, LevelMap{Side::Sell}} {}
 
     // --- mutations -------------------------------------------------------

@@ -20,26 +20,51 @@ measured and what has not.
 
 ## Measured so far
 
-On an Apple M4, against 475,247 real QQQ book operations. Every number here is
-reproduced by `bench/reproduce.sh`; the full conditions are in NUMBERS.md.
+Apple M4, against **3,448,973 real QQQ book operations** from a complete
+NASDAQ session. Every number is reproduced by `bench/reproduce.sh`; the
+conditions are in NUMBERS.md.
 
 | | throughput | ns/op | p50 latency |
 |---|---|---|---|
-| FlatBook | 20.0M ops/s | 50.0 | 76 ns |
-| AvlBook | 13.7M ops/s | 72.9 | 109 ns |
-| MapBook | 8.7M ops/s | 114.3 | 155 ns |
+| **FlatBook** | **30.7M ops/s** | **32.5** | ~70 ns |
+| AvlBook | 15.1M ops/s | 66.1 | ~105 ns |
+| MapBook | 8.2M ops/s | 122.3 | ~156 ns |
 
 `AvlBook` differs from `FlatBook` in one thing only -- an AVL tree over a node
 pool instead of the tick-indexed ladder, with the same pools, queues and order
-index -- so **1.46x is what the ladder bought**. `MapBook` is the textbook
-implementation and changes everything at once, so **2.29x is what the whole
+index -- so **2.03x is what the ladder bought**. `MapBook` is the textbook
+implementation and changes everything at once, so **3.76x is what the whole
 design bought**.
 
-**There is no p99 figure here.** The benchmark measures its own floor by running
-the identical loop with no book operation in it, and on macOS that floor moves
-by 6x between identical runs. p99 and p99.9 need a machine with core isolation;
-until that runs, the number does not exist. NUMBERS.md records the observed
-ranges as evidence for why, not as results.
+### There is no p99 figure here, on purpose
+
+The benchmark measures its own floor by running the identical loop with no book
+operation in it. On this machine FlatBook's p99 came out as 202 ns, 37,085 ns,
+168 ns and 5,500,354 ns across four consecutive runs of the same binary on the
+same data -- a 30,000x range, dominated by the macOS scheduler.
+
+p99 and p99.9 need a machine with core isolation. Until that runs, the number
+does not exist. NUMBERS.md records the observed spread as evidence for why.
+
+## Validated against the real feed
+
+```
+./build/release/apps/itch_stats data/01302019.NASDAQ_ITCH50.gz
+```
+
+368,366,634 messages, 10.5 GB of payload, **zero malformed frames**. The framing
+layer checks each message's length prefix against the length declared for its
+type byte, so a clean pass is every one of the 23 layout structs validated
+against reality 368 million times.
+
+```
+./build/release/apps/itch_replay --symbol QQQ --runs 10 data/01302019.NASDAQ_ITCH50.gz
+```
+
+The replay journal's digest is identical across ten runs, across all three book
+implementations, and across the `release`, `release-checked` and `asan-ubsan`
+builds. A digest that survives both `-O3` and ASan is evidence that no
+optimisation changed the answer. Zero crossed states over the session.
 
 ## Building
 

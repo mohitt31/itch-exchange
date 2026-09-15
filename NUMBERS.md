@@ -165,134 +165,196 @@ in CI as hygiene, not as evidence that any concurrency was verified.
 
 ---
 
-## Real feed, 490 MB prefix
+## Real feed, complete session
 
-Input: first 514,326,528 bytes of `01302019.NASDAQ_ITCH50.gz`,
-sha256 `b837984685d826570e48704e0dcadd1dde03f310b4a4f6e9b16f0795e03998dc`.
-A gzip prefix decompresses cleanly to the cut, so this is a valid partial
-session covering 03:03:59 to 09:52:30 Eastern.
+Input: `01302019.NASDAQ_ITCH50.gz`, the complete 30 January 2019 NASDAQ
+TotalView-ITCH 5.0 session. 4,764,426,091 bytes compressed, `gzip -t` clean.
+Metadata including the sha256 is in `data/CORPUS.json`.
 
 ```
-./build/release/apps/itch_stats --by-symbol 20 <prefix.gz>
+./build/release/apps/itch_stats --by-symbol 25 data/01302019.NASDAQ_ITCH50.gz
 ```
 
 | | |
 |---|---|
-| messages | 40,385,598 |
-| payload bytes | 1,176,685,643 |
-| framed bytes | 1,257,456,839 |
-| malformed frames | **0** |
-| terminated | truncated input, 36 trailing bytes (expected: it is a prefix) |
+| messages | **368,366,634** |
+| payload bytes | 10,509,149,824 |
+| framed bytes | 11,245,883,092 |
+| session | 03:03:59.687 to 20:05:00.000 Eastern |
+| **malformed frames** | **0** |
+| terminated | clean end of input |
 
 Zero malformed frames means the framing layer's check -- each length prefix
-against the declared length for its type -- passed 40,385,598 times. That is
-every one of the 23 layout structs validated against the real feed.
+against the length declared for its type byte -- passed **368,366,634 times**.
+That is every one of the 23 layout structs validated against the real feed.
 
-Message mix: `A` 42.25%, `D` 39.25%, `U` 7.67%, `X` 3.56%, `I` 2.60%,
-`F` 2.19%, `E` 1.55%, `L` 0.48%, `P` 0.33%, `C` 0.036%, remainder below 0.03%.
-Six types defined by the spec did not appear in this prefix: `B K W h N O`.
+Message mix: `A` 44.24%, `D` 42.97%, `U` 7.39%, `E` 2.20%, `X` 1.27%, `I` 1.00%,
+`F` 0.47%, `P` 0.36%, `L` 0.053%, `C` 0.043%, remainder below 0.01%. Eighteen of
+the 23 defined types appear; `K N O W h` do not occur in this session.
 
-Throughput on this run was 14,501,907 msg/s and 430.6 MiB/s, but that figure
-includes gzip inflate and is **not** a parser benchmark. It is reported here
-only to show the run completed; the parser benchmark is still to be built.
+Busiest symbols by book-moving messages: QQQ 3,448,973; SPY 3,055,956;
+IWM 1,968,160; AMD 1,862,837; GOOG 1,671,883; AAPL 1,656,597.
 
-Busiest symbols by book-moving messages: QQQ 475,247; RDS.B 369,811;
-SPY 355,817; SAP 343,885; RDS.A 330,208; AMD 318,476.
+The 14,356,335 msg/s reported by that run includes gzip inflate and is **not** a
+parser benchmark.
 
 ## Price ladder measurements
 
 ```
-./build/release/apps/itch_histogram --symbol QQQ --json measurements/QQQ_partial.json <prefix.gz>
+./build/release/apps/itch_histogram --symbol QQQ --json measurements/histogram_QQQ.json \
+    data/01302019.NASDAQ_ITCH50.gz
 ```
 
 Full output in `measurements/`. Distance from the same side's inside, in
-pennies, measured before the order is applied.
+pennies, measured before the order is applied. Complete session.
 
 | | QQQ | SPY | AMD |
 |---|---|---|---|
-| adds measured | 251,286 | 189,464 | 175,078 |
+| adds measured | 1,812,938 | 1,637,792 | 970,510 |
 | p50 ticks | 0 | 1 | 0 |
-| p90 ticks | 9 | 17 | 67 |
-| p99 ticks | 2,138 | 797 | 1,068 |
-| p99.9 ticks | 6,378 | 5,299 | 2,156 |
-| coverage +/-2048 | 98.94% | 99.45% | 99.86% |
-| coverage +/-4096 | 99.74% | 99.83% | 99.97% |
-| sub-penny adds | 4 (0.0016%) | 2 (0.0011%) | 5 (0.0029%) |
-| peak live levels | 2,057 | 775 | 1,798 |
-| peak live orders | 7,073 | 2,145 | 13,843 |
+| p90 ticks | 9 | 19 | 24 |
+| p99 ticks | 498 | 803 | 340 |
+| p99.9 ticks | 2,541 | 1,209 | 1,332 |
+| **coverage +/-2048** | **99.8368%** | **99.9309%** | **99.9694%** |
+| coverage +/-4096 | 99.9604% | 99.9742% | 99.9840% |
+| sub-penny adds | 4 (0.00022%) | 2 (0.00012%) | 5 (0.00052%) |
+| peak live levels | 2,137 | 940 | 1,855 |
+| peak live orders | 7,679 | 2,985 | **15,286** |
 | price range | $0.0001 - $199,999.99 | same | same |
-| crossed states | 0 | 0 | 0 |
+| **crossed states** | **0** | **0** | **0** |
 
 These decide the ladder geometry; the reasoning is in DESIGN.md section 15.
-They will be re-measured on the complete file, which is still downloading.
+
+The full session is **stronger** evidence than the 490 MB prefix these were
+first measured on: the +/-2048 window covers 99.84% to 99.97% of insertions over
+a whole day, against 98.94% to 99.86% over the prefix, and sub-penny prices are
+rarer still. The peak live order count grew from 13,843 to 15,286 on AMD, which
+is what sizes the order index.
 
 ## Three-way book benchmark
 
 ```
-./build/release/bench/bench_book --symbol QQQ --runs 9 <corpus.gz>
+./build/release/bench/bench_book --symbol QQQ --runs 7 data/01302019.NASDAQ_ITCH50.gz
 ```
 
 Machine: Apple M4, macOS 26.5, Apple clang 21.0.0.
 Build: `release` preset, `-O3 -DNDEBUG -mcpu=native` (resolves to `-mcpu=apple-m4`),
 `ITCH_INVARIANT_LEVEL=0`.
-Workload: QQQ's 475,247 real book operations from the 490 MB prefix
-(228,599 adds, 216,732 deletes, 22,689 replaces, 6,619 executions, 608 cancels).
-All three implementations produce book digest `5e2e353d68d726bd`; the benchmark
+Workload: QQQ's **3,448,973** real book operations over the complete session
+(1,623,619 adds, 1,577,106 deletes, 189,321 replaces, 55,963 executions,
+2,964 cancels).
+All three implementations produce book digest `a0ed37f623c3aa3f`; the benchmark
 refuses to report if they disagree.
 
 ### Throughput -- reliable
 
-Closed loop, nine rounds, **interleaved** between implementations. Medians
-across five separate process invocations varied by under 5%.
+Closed loop, seven rounds, **interleaved** between implementations. Four separate
+process invocations gave FlatBook 30,732,330 / 30,519,116 / 30,817,216 /
+30,820,830 ops/s -- about 1% spread.
 
 | | median ops/s | ns/op | slowest round | fastest round | vs FlatBook |
 |---|---|---|---|---|---|
-| FlatBook | 20,010,189 | 50.0 | 18,213,640 | 21,491,868 | 1.00x |
-| AvlBook | 13,726,024 | 72.9 | 13,036,851 | 14,201,403 | **1.46x** |
-| MapBook | 8,748,024 | 114.3 | 8,615,094 | 8,787,891 | **2.29x** |
+| **FlatBook** | **30,732,330** | **32.5** | 30,324,063 | 30,894,187 | 1.00x |
+| AvlBook | 15,130,586 | 66.1 | 15,021,435 | 15,166,262 | **2.03x** |
+| MapBook | 8,175,191 | 122.3 | 8,058,407 | 8,309,904 | **3.76x** |
 
 `AvlBook` differs from `FlatBook` in exactly one thing: the price-to-level
-structure. Same pools, same intrusive queues, same order index. So 1.46x is
-what the ladder bought. `MapBook` is the textbook implementation and changes
-everything at once, so 2.29x is what the whole design bought.
+structure. Same pools, same intrusive queues, same order index, an AVL tree over
+a node pool instead of the tick-indexed ladder. So **2.03x is what the ladder
+bought**. `MapBook` is the textbook implementation and changes everything at
+once, so **3.76x is what the whole design bought**.
 
-### Latency p50 -- reliable
+### Latency p50 -- reliable, with its range
 
-Open loop at 4,374,012 ops/s (50% of the slowest implementation's saturation,
-so none is backed up). Measured timer floor is 41 ns and a clock read costs
-about 15 ns, both reported by the benchmark at startup.
+Open loop at 4,087,595 ops/s (50% of the slowest implementation's saturation, so
+none is backed up). Measured timer floor is 41 ns and a clock read costs about
+15 ns, both reported by the benchmark at startup.
 
-p50 across five separate invocations:
+Across four separate invocations:
 
-| | observed p50 range (ns) | median |
+| | observed p50 (ns) | typical |
 |---|---|---|
 | harness floor | at or below the 41 ns timer floor | -- |
-| FlatBook | 73 - 90 | **76** |
-| AvlBook | 104 - 110 | **109** |
-| MapBook | 154 - 157 | **155** |
+| FlatBook | 67, 70, 68, 102 | **~70** |
+| AvlBook | 103, 106, 104, 123 | **~105** |
+| MapBook | 160, 155, 159, 154 | **~156** |
 
-These are well above the timer floor and vary by under 20%, so they are
-measurements. The ratios (1.43x and 2.04x) agree with the throughput ratios.
+Well clear of the timer floor, and the ratios agree with the throughput ratios.
 
-### Latency p99 and beyond -- NOT reliable on this machine
+### Latency p99 and beyond -- NOT reliable on this machine, with proof
 
-The benchmark runs the identical pacing loop with **no book operation in it**
-and reports it as a "harness floor" row. Across five invocations:
+The benchmark runs the identical pacing loop with **no book operation in it** and
+reports it as a "harness floor" row.
 
-| | p99 range (ns) | p99.9 range (ns) |
+FlatBook's p99, same binary, same input, four consecutive invocations:
+
+| run | FlatBook p99 |
+|---|---|
+| 1 | 202 ns |
+| 2 | 37,085 ns |
+| 3 | 168 ns |
+| 4 | **5,500,354 ns** |
+
+**A 30,000x range for the same code on the same data.** In other runs the
+*empty* loop's own p99 was 454 ns against 70-85 ns elsewhere, and its p99.9
+reached 13,535 ns -- above FlatBook's 9,421 ns in the same run.
+
+macOS has no `isolcpus`, no `nohz_full`, and no way to pin a thread to a core.
+The benchmark requests `QOS_CLASS_USER_INTERACTIVE`, which is as close as this
+machine gets and is not close enough.
+
+**So no p99 or p99.9 figure is quoted from this machine anywhere in this
+project.** The tail belongs on a box with core isolation. Until that runs, the
+number does not exist. The figures above are recorded as evidence for why, not
+as results.
+
+## Profiling: before and after
+
+Two bottlenecks found and fixed. Reasoning in DESIGN.md section 20.
+
+### Order index sizing
+
+The index was sized from the order pool's capacity, giving a 524,288-entry,
+8 MiB table holding under 7,000 live entries. A sweep with the sizes
+**interleaved** so warm-up drift could not land on one of them:
+
+| entries | load factor | ops/s |
 |---|---|---|
-| harness floor | 70 - 454 | -- |
-| FlatBook | 1,934 - 4,558 | 9,116 - 27,336 |
+| 16,384 | 43.2% | 18,836,147 |
+| 32,768 | 21.6% | 23,466,717 |
+| 65,536 | 10.8% | 25,875,752 |
+| **131,072** | **5.4%** | **26,974,316** |
+| 262,144 | 2.7% | 24,844,157 |
+| 524,288 | 1.3% | 20,698,310 |
 
-FlatBook's p99 varies by 2.4x and its p99.9 by 3x between identical runs, and in
-one run the *empty* loop's p99 was 454 ns. macOS has no `isolcpus`, no
-`nohz_full` and no way to pin a thread to a core; the benchmark asks for
-`QOS_CLASS_USER_INTERACTIVE`, which is as close as this machine gets.
+There is an optimum and both sides of it are worse. Default changed to 131,072
+entries. At the busiest measured peak (15,286 live orders on AMD) that is an
+11.7% load factor, inside the flat part of the curve.
 
-**So no p99 or p99.9 figure for this project is quoted from this machine.** The
-tail belongs on the Linux box with core isolation, and until that is run the
-number does not exist. The ranges above are recorded to show why, not as
-results.
+### Handle validation
+
+`Pool<Order>::deref_checked` was 15.6% of the profile after the first fix. It
+did four checks; two were provably redundant (the null check is subsumed by the
+bounds check, the liveness check by the generation match). Reduced to two, with
+no loss of detection: all 17 pool tests, including null, out-of-range,
+use-after-free, double-free and slot-reuse, unchanged and passing.
+
+### Combined
+
+| | before | after | |
+|---|---|---|---|
+| FlatBook, 475k-op workload | 20,010,189 ops/s | 28,803,939 ops/s | 1.44x |
+| index sizing alone | 20,010,189 | 26,492,637 | 1.32x |
+| handle validation alone | 26,811,927-27,306,964 | 29,717,177-30,098,291 | 1.11x |
+
+### One fix that did not pay, recorded because it did not
+
+Slimming the assertion call sites to let `deref_checked` inline showed
+26.5 -> 27.7 million ops/s on one run, a 4.5% win. Three further runs of each
+version gave 26.8 / 27.3 / 27.1 against 27.2 to 27.7 -- overlapping -- and the
+binary contained the same number of out-of-line `deref_checked` symbols either
+way. It was noise, and the change was reverted rather than kept with a number
+attached.
 
 ## Not measured yet
 

@@ -110,12 +110,10 @@ public:
     [[nodiscard]] u64 probes() const noexcept { return probes_; }
     [[nodiscard]] u64 inserts() const noexcept { return inserts_; }
 
-    // Average extra probes beyond the first, over every operation so far. The
-    // number that says whether the hash choice was right.
-    [[nodiscard]] double probes_per_op() const noexcept {
-        return inserts_ == 0 ? 0.0
-                             : static_cast<double>(probes_) / static_cast<double>(inserts_);
-    }
+    // Deliberately returns the two counters rather than their ratio: the
+    // no-floating-point rule applies below apps/, and a diagnostic accessor is
+    // not a good enough reason to put a double here. Callers that want an
+    // average divide them.
 
     void validate() const {
         u32 counted = 0;

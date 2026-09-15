@@ -122,6 +122,12 @@ Enforced twice: `-Wdouble-promotion` as the compiler-side tripwire, and
 `tools/check_no_float.sh` in CI for the source side, because a deliberate
 `double x` compiles without any warning at all.
 
+The source check has already earned its keep: a `probes_per_op()` diagnostic
+accessor on `OrderIndex` returned a `double`, and the check refused it. It was
+harmless -- a counter ratio, never on the book path -- which is exactly the
+reasoning that would let the next one in. The accessor now returns the two
+counters and callers in `apps/` and `bench/` divide them.
+
 ## 7. Warning set
 
 `-Wall -Wextra -Wpedantic -Werror` plus `-Wshadow`, `-Wconversion`,
@@ -744,6 +750,119 @@ labelled as such.
   would benchmark a book nobody is running -- the measured feed is 42% adds and
   39% deletes, half of all insertions land exactly on the inside, and every
   symbol carries permanent stub quotes.
+
+## 20. Profiling: two bottlenecks, and one fix that did not pay
+
+Found with two tools used together, because neither alone is sufficient. The
+book's own counters say what the structure is *doing* -- probes per index
+lookup, how often the best price is recomputed, how much traffic misses the
+ladder window -- which points at a cause. `/usr/bin/sample` says where the time
+*goes*, which points at a location. A hot function with a good reason to be hot
+is not a bottleneck, and a bad counter in cold code is not one either.
+
+`bench/bench_profile` runs the real workload in a loop and prints both.
+
+### What the counters said first
+
+Over one pass of QQQ's 475,247 operations:
+
+| | |
+|---|---|
+| index probes per operation | **0.0311** |
+| best price recomputes | 16,155 (3.40% of operations) |
+| ladder window hits / overflow | 249,267 / 2,021 (**0.80% overflow**) |
+| ladder rebases | **3** for the whole session |
+
+The 0.80% overflow rate confirms the section 15 prediction (98.9% to 99.9%
+in-window) on the actual run, and three rebases in a session means the rebasing
+machinery costs nothing at all. Neither is a bottleneck. That is what the
+counters are for: ruling things out cheaply.
+
+### Bottleneck 1: the order index was sized four times too large
+
+The index was sized from the *order pool* capacity, on the reasoning that it has
+to hold every live order. But the pool is deliberately generous -- it is dense,
+prefaulted once, and never grows -- while the index is open-addressed and its
+probes land anywhere in it. Sizing one from the other made a 524,288-entry,
+8 MiB table holding 6,819 live entries.
+
+A sweep, with the sizes **interleaved** so the machine's warm-up drift could not
+land systematically on one of them:
+
+| entries | load factor | ops/s |
+|---|---|---|
+| 16,384 | 43.2% | 18,836,147 |
+| 32,768 | 21.6% | 23,466,717 |
+| 65,536 | 10.8% | 25,875,752 |
+| **131,072** | **5.4%** | **26,974,316** |
+| 262,144 | 2.7% | 24,844,157 |
+| 524,288 | 1.3% | 20,698,310 |
+
+There is an optimum and **both sides of it are worse**, which is the part worth
+noticing. Below it the table is small but the load factor makes probe chains
+long. Above it the chains are short but a lookup is a cache and TLB miss in a
+table that is almost entirely empty. The old default sat at the far end.
+
+Index capacity is now a separate constructor parameter from order capacity, and
+the default is 131,072 entries. **20.0 -> 26.5 million ops/s, 1.32x.**
+
+The first version of this sweep ran the sizes in ascending order and showed
+larger-is-always-better, because the smallest size got the cold start. The same
+mistake as section 19, caught the second time by habit rather than by luck.
+
+### Bottleneck 2: handle validation did four branches where two suffice
+
+After the first fix, `Pool<Order>::deref_checked` was **15.6% of the profile** --
+the largest entry after `main`. It runs on every handle dereference, and
+`reduce` alone does three of them.
+
+It was doing four checks. Two are provably redundant:
+
+- **The null check.** A null handle's index is `kNullIndex`, which is defined
+  equal to `kMaxCapacity`, and a pool's capacity is asserted at construction to
+  be at most `kMaxCapacity`. So a null handle's index is never less than
+  `slots_.size()` and the bounds check already rejects it.
+- **The liveness check.** `allocate()` only ever issues a handle whose
+  generation it has just incremented to odd. A handle in circulation therefore
+  always carries an odd generation, so `slot.generation() == h.generation()`
+  already implies the slot's generation is odd, which is what live means.
+
+Both implications are now `static_assert`ed where they can be, and neither
+weakens detection: the null, out-of-range, use-after-free, double-free and
+slot-reuse tests are unchanged and all 17 still pass.
+
+**26.8 -> 30.0 million ops/s, 1.11x**, reproduced across three separate process
+invocations.
+
+### The fix that did not pay, recorded because it did not
+
+The profile showed `deref_checked` as an out-of-line symbol, suggesting it had
+been pushed past the inliner's threshold by the four assertion call sites --
+each of which materialised a five-field `AssertInfo` temporary. Passing the
+arguments individually to a `cold, noinline` function should have shrunk the
+call sites enough to let it inline.
+
+One measurement showed 26.5 -> 27.7 million ops/s, a 4.5% win. Three more runs
+of each version gave 26.8, 27.3, 27.1 against 27.2 to 27.7 -- overlapping
+ranges -- and the count of out-of-line `deref_checked` symbols in the binary was
+identical either way.
+
+**It was noise.** The change was reverted rather than kept with a number
+attached to it. A 4.5% claim needs more than one run, and the first run is
+exactly when a plausible number is most tempting.
+
+### Result
+
+| | before | after | |
+|---|---|---|---|
+| FlatBook | 20,010,189 ops/s | **28,803,939 ops/s** | **1.44x** |
+| vs AvlBook | 1.46x | 1.92x | |
+| vs MapBook | 2.29x | 3.47x | |
+
+Both fixes were sizing and branch-count changes to code that was already
+correct. Neither changed a data structure, and neither was guessable -- the
+index sweep in particular found an optimum whose shape contradicted the
+hypothesis that sent me looking.
 
 ---
 

@@ -5,3 +5,4 @@ function(itch_add_bench name)
 endfunction()
 
 itch_add_bench(bench_book)
+itch_add_bench(bench_profile)
