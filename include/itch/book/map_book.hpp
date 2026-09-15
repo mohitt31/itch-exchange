@@ -212,6 +212,24 @@ public:
 
     [[nodiscard]] bool contains(OrderRef ref) const { return orders_.count(ref) != 0; }
 
+    [[nodiscard]] Side side_of(OrderRef ref) const {
+        const Entry* e = find(ref);
+        ITCH_ASSERT_MSG(e != nullptr, "side_of for an order that is not resting");
+        return e->side;
+    }
+
+    [[nodiscard]] Price price_of(OrderRef ref) const {
+        const Entry* e = find(ref);
+        ITCH_ASSERT_MSG(e != nullptr, "price_of for an order that is not resting");
+        return e->price;
+    }
+
+    [[nodiscard]] Qty qty_of(OrderRef ref) const {
+        const Entry* e = find(ref);
+        ITCH_ASSERT_MSG(e != nullptr, "qty_of for an order that is not resting");
+        return e->qty;
+    }
+
 private:
     struct Entry {
         Side                          side;

@@ -14,6 +14,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "itch/book/book_types.hpp"
 #include "itch/core/assert.hpp"
@@ -23,6 +24,20 @@
 namespace itch::replay {
 
 using itch::book::Side;
+
+// Hooks for tools that need to see the book around an update. Measuring how far
+// a new order sits from the inside, for instance, has to happen before the
+// order is applied, because applying it can move the inside.
+//
+// The default does nothing and costs nothing: every hook is empty and inlines
+// away, so the plain replay path is unchanged by the existence of this.
+struct NullObserver {
+    template <class Book>
+    void before_add(const Book&, Side, Price, Qty) noexcept {}
+
+    template <class Book>
+    void after_apply(const Book&, Timestamp) noexcept {}
+};
 
 struct BuilderStats {
     u64 messages = 0;       // every message seen
@@ -39,13 +54,16 @@ struct BuilderStats {
     Timestamp last_ts = 0;
 };
 
-template <class Book>
+template <class Book, class Observer = NullObserver>
 class BookBuilder {
 public:
     // An empty symbol means "decide later": the first stock directory message
     // wins. Useful for tools that just want some symbol to look at.
-    explicit BookBuilder(Book& book, std::string_view symbol)
-        : book_(book), symbol_(symbol) {}
+    explicit BookBuilder(Book& book, std::string_view symbol, Observer observer = Observer{})
+        : book_(book), symbol_(symbol), observer_(std::move(observer)) {}
+
+    [[nodiscard]] Observer& observer() noexcept { return observer_; }
+    [[nodiscard]] const Observer& observer() const noexcept { return observer_; }
 
     // --- reference data --------------------------------------------------
 
@@ -69,7 +87,8 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
-        do_add(v.order_reference_number(), v.buy_sell_indicator(), v.price(), v.shares());
+        do_add(v.order_reference_number(), v.buy_sell_indicator(), v.price(), v.shares(),
+               v.timestamp());
     }
 
     void on_add_order_with_mpid(wire::AddOrderWithMpidView v) {
@@ -77,7 +96,8 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
-        do_add(v.order_reference_number(), v.buy_sell_indicator(), v.price(), v.shares());
+        do_add(v.order_reference_number(), v.buy_sell_indicator(), v.price(), v.shares(),
+               v.timestamp());
     }
 
     void on_order_executed(wire::OrderExecutedView v) {
@@ -89,6 +109,7 @@ public:
         stats_.executions++;
         stats_.executed_shares += v.executed_shares();
         stats_.applied++;
+        observer_.after_apply(book_, v.timestamp());
     }
 
     void on_order_executed_with_price(wire::OrderExecutedWithPriceView v) {
@@ -103,6 +124,7 @@ public:
         stats_.executions++;
         stats_.executed_shares += v.executed_shares();
         stats_.applied++;
+        observer_.after_apply(book_, v.timestamp());
     }
 
     void on_order_cancel(wire::OrderCancelView v) {
@@ -113,6 +135,7 @@ public:
         book_.cancel(v.order_reference_number(), v.cancelled_shares());
         stats_.cancels++;
         stats_.applied++;
+        observer_.after_apply(book_, v.timestamp());
     }
 
     void on_order_delete(wire::OrderDeleteView v) {
@@ -123,6 +146,7 @@ public:
         book_.remove(v.order_reference_number());
         stats_.deletes++;
         stats_.applied++;
+        observer_.after_apply(book_, v.timestamp());
     }
 
     void on_order_replace(wire::OrderReplaceView v) {
@@ -130,10 +154,15 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
+        // A replace is a delete plus an add, so the observer sees the add half
+        // the same way it would see a standalone one.
+        observer_.before_add(book_, book_.side_of(v.original_order_reference_number()),
+                             v.price(), v.shares());
         book_.replace(v.original_order_reference_number(), v.new_order_reference_number(),
                       v.price(), v.shares());
         stats_.replaces++;
         stats_.applied++;
+        observer_.after_apply(book_, v.timestamp());
     }
 
     // --- reports that must not touch the book ----------------------------
@@ -179,16 +208,20 @@ private:
         return resolved_ && locate == locate_;
     }
 
-    void do_add(OrderRef ref, char indicator, Price price, Qty shares) {
+    void do_add(OrderRef ref, char indicator, Price price, Qty shares, Timestamp ts) {
         ITCH_ASSERT_MSG(indicator == 'B' || indicator == 'S',
                         "buy/sell indicator is neither B nor S");
-        book_.add(ref, indicator == 'B' ? Side::Buy : Side::Sell, price, shares);
+        const Side side = indicator == 'B' ? Side::Buy : Side::Sell;
+        observer_.before_add(book_, side, price, shares);
+        book_.add(ref, side, price, shares);
         stats_.adds++;
         stats_.applied++;
+        observer_.after_apply(book_, ts);
     }
 
     Book&        book_;
     std::string  symbol_;
+    Observer     observer_;
     u16          locate_ = 0;
     bool         resolved_ = false;
     BuilderStats stats_{};

@@ -1,0 +1,60 @@
+input            /private/tmp/claude-501/-Users-mohit/4fff96bd-8a43-453d-a585-56ebbf92c6a0/scratchpad/partial.gz (gzip, streamed)
+messages         40,385,598
+payload bytes    1,176,685,643
+framed bytes     1,257,456,839
+first timestamp  03:03:59.687760787
+last timestamp   09:52:30.030404689
+elapsed          2.742 s
+throughput       14,729,626 msg/s, 437.4 MiB/s
+
+terminated       truncated input (truncated message body)
+trailing bytes   36
+
+type name                                        count    share
+----------------------------------------------------------------
+A    AddOrder                               17,062,478  42.249%
+D    OrderDelete                            15,852,246  39.252%
+U    OrderReplace                            3,096,286   7.667%
+X    OrderCancel                             1,437,631   3.560%
+I    Noii                                    1,051,816   2.604%
+F    AddOrderWithMpid                          882,464   2.185%
+E    OrderExecuted                             626,302   1.551%
+L    MarketParticipantPosition                 193,726   0.480%
+P    TradeNonCross                             133,260   0.330%
+C    OrderExecutedWithPrice                     14,498   0.036%
+Y    RegShoRestriction                           8,737   0.022%
+H    StockTradingAction                          8,721   0.022%
+R    StockDirectory                              8,714   0.022%
+Q    CrossTrade                                  8,713   0.022%
+S    SystemEvent                                     3   0.000%
+J    LuldAuctionCollar                               2   0.000%
+V    MwcbDeclineLevel                                1   0.000%
+----------------------------------------------------------------
+     total                                  40,385,598 100.000%
+
+8694 symbols with book activity
+
+symbol     locate          book msgs         all msgs    share
+----------------------------------------------------------------
+QQQ        6449              475,247          475,641   1.177%
+RDS.B      6537              369,811          370,047   0.916%
+SPY        7291              355,817          356,641   0.881%
+SAP        6836              343,885          344,076   0.852%
+RDS.A      6536              330,208          330,377   0.818%
+AMD        331               318,476          322,776   0.789%
+UN         7979              310,029          310,185   0.768%
+AAPL       14                271,419          275,632   0.672%
+RIO        6634              266,927          267,117   0.661%
+ASML       537               254,172          254,431   0.629%
+BBL        723               230,590          230,779   0.571%
+NVS        5641              228,582          228,822   0.566%
+VOD        8231              218,864          219,056   0.542%
+IWM        4260              213,238          213,624   0.528%
+GOOG       3419              207,646          208,122   0.514%
+GOOGL      3420              201,330          201,995   0.499%
+BUD        1085              198,735          198,922   0.492%
+CUK        1793              198,094          198,259   0.491%
+AZN        666               188,223          188,398   0.466%
+DEO        1955              183,921          184,085   0.455%
+
+not seen         B K N O W h 

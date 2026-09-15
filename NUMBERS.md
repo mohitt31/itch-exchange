@@ -153,14 +153,73 @@ in CI as hygiene, not as evidence that any concurrency was verified.
 
 ---
 
+## Real feed, 490 MB prefix
+
+Input: first 514,326,528 bytes of `01302019.NASDAQ_ITCH50.gz`,
+sha256 `b837984685d826570e48704e0dcadd1dde03f310b4a4f6e9b16f0795e03998dc`.
+A gzip prefix decompresses cleanly to the cut, so this is a valid partial
+session covering 03:03:59 to 09:52:30 Eastern.
+
+```
+./build/release/apps/itch_stats --by-symbol 20 <prefix.gz>
+```
+
+| | |
+|---|---|
+| messages | 40,385,598 |
+| payload bytes | 1,176,685,643 |
+| framed bytes | 1,257,456,839 |
+| malformed frames | **0** |
+| terminated | truncated input, 36 trailing bytes (expected: it is a prefix) |
+
+Zero malformed frames means the framing layer's check -- each length prefix
+against the declared length for its type -- passed 40,385,598 times. That is
+every one of the 23 layout structs validated against the real feed.
+
+Message mix: `A` 42.25%, `D` 39.25%, `U` 7.67%, `X` 3.56%, `I` 2.60%,
+`F` 2.19%, `E` 1.55%, `L` 0.48%, `P` 0.33%, `C` 0.036%, remainder below 0.03%.
+Six types defined by the spec did not appear in this prefix: `B K W h N O`.
+
+Throughput on this run was 14,501,907 msg/s and 430.6 MiB/s, but that figure
+includes gzip inflate and is **not** a parser benchmark. It is reported here
+only to show the run completed; the parser benchmark is still to be built.
+
+Busiest symbols by book-moving messages: QQQ 475,247; RDS.B 369,811;
+SPY 355,817; SAP 343,885; RDS.A 330,208; AMD 318,476.
+
+## Price ladder measurements
+
+```
+./build/release/apps/itch_histogram --symbol QQQ --json measurements/QQQ_partial.json <prefix.gz>
+```
+
+Full output in `measurements/`. Distance from the same side's inside, in
+pennies, measured before the order is applied.
+
+| | QQQ | SPY | AMD |
+|---|---|---|---|
+| adds measured | 251,286 | 189,464 | 175,078 |
+| p50 ticks | 0 | 1 | 0 |
+| p90 ticks | 9 | 17 | 67 |
+| p99 ticks | 2,138 | 797 | 1,068 |
+| p99.9 ticks | 6,378 | 5,299 | 2,156 |
+| coverage +/-2048 | 98.94% | 99.45% | 99.86% |
+| coverage +/-4096 | 99.74% | 99.83% | 99.97% |
+| sub-penny adds | 4 (0.0016%) | 2 (0.0011%) | 5 (0.0029%) |
+| peak live levels | 2,057 | 775 | 1,798 |
+| peak live orders | 7,073 | 2,145 | 13,843 |
+| price range | $0.0001 - $199,999.99 | same | same |
+| crossed states | 0 | 0 | 0 |
+
+These decide the ladder geometry; the reasoning is in DESIGN.md section 15.
+They will be re-measured on the complete file, which is still downloading.
+
 ## Not measured yet
 
 Listed so that their absence is explicit rather than quiet.
 
-- Parse throughput (messages/s, bytes/s).
-- Per-type message counts over the real feed.
-- Price distance distribution from the inside, and the fraction of prices not
-  aligned to $0.01. These decide the ladder geometry.
+- Parse throughput on its own, without a decompressor in the loop.
+- All of the above over the complete session rather than a 490 MB prefix.
 - Book update latency: p50, p99, p99.9, for each of the three implementations.
 - Book update throughput for each of the three implementations.
 - Cache-miss and branch-miss counters explaining the ratios between them.

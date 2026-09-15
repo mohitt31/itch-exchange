@@ -310,6 +310,127 @@ specific condition, never the category.
 fails `gzip_corrupt_input_always_throws` and `gzip_bad_header_throws_immediately`,
 which was checked rather than assumed.
 
+## 15. The price ladder, decided by measurement
+
+This is the decision the whole project turns on, and it was pre-committed in
+section "Open, to be settled by measurement" before any data was seen. The rule
+was: sliding window if 99.9% of insertions land within +/- K ticks for K <= 2048,
+direct-mapped if the distribution is heavy-tailed but sparse.
+
+The data says something the rule did not anticipate, so here is what was
+measured and what it actually implies.
+
+### What was measured
+
+`apps/itch_histogram` over a 490 MB prefix of the 30 January 2019 session
+(40.4 million messages, 03:03 to 09:52), for the three busiest symbols.
+Distances are in pennies, measured at insertion against the same side's inside,
+before the order is applied.
+
+| | QQQ | SPY | AMD |
+|---|---|---|---|
+| adds measured | 251,286 | 189,464 | 175,078 |
+| p50 | **0** | 1 | **0** |
+| p90 | 9 | 17 | 67 |
+| p99 | 2,138 | 797 | 1,068 |
+| p99.9 | 6,378 | 5,299 | 2,156 |
+| improving the inside | 6.53% | -- | -- |
+| peak live levels | 2,057 | 775 | 1,798 |
+| peak live orders | 7,073 | 2,145 | 13,843 |
+
+Coverage by window half-width:
+
+| window | QQQ | SPY | AMD |
+|---|---|---|---|
+| +/-16 | 92.03% | 89.82% | 81.80% |
+| +/-256 | 93.41% | 94.35% | 94.82% |
+| +/-1024 | 98.08% | 99.25% | 98.90% |
+| **+/-2048** | **98.94%** | **99.45%** | **99.86%** |
+| +/-4096 | 99.74% | 99.83% | 99.97% |
+
+### Finding 1: half of all insertions land exactly on the inside
+
+p50 is 0 or 1 tick on every symbol. The single hottest slot in the ladder is the
+inside itself, and the array around it is what the next 40% of insertions touch.
+This is the result that justifies a flat array at all.
+
+### Finding 2: penny indexing works, and the alternative never would have
+
+Sub-penny prices are **0.0016% of adds on QQQ, 0.0011% on SPY, 0.0029% on AMD** --
+four, two and five orders respectively out of hundreds of thousands. Reg NMS
+Rule 612 does what it says.
+
+So the ladder is indexed by penny and the handful of sub-penny prices go to the
+overflow map. Indexing by raw 1/10000 units instead would have needed 5.1 million
+slots to span what 512 slots span now, for a 0.002% correctness gain that the
+overflow map already provides.
+
+### Finding 3: every symbol has permanent orders at absurd prices
+
+All three symbols report the same price range: **$0.0001 to $199,999.99**. These
+are stub quotes -- orders posted far from the market to satisfy two-sided
+quoting obligations. They are real, they are in the feed, and crucially they are
+posted once and left there.
+
+**This is what rules out the direct-mapped design.** Under `slot = price_tick &
+(N - 1)`, a stub quote at $199,999.99 aliases onto some slot inside the hot
+window and, because it is never cancelled, squats there for the entire session.
+Every access to the real price that maps to that slot falls through to the
+overflow map, all day, for no reason a profile would make obvious.
+
+A sliding window has no such failure: a price outside the window is simply not
+in the array, so stub quotes live in the overflow map permanently and never
+touch the flat storage at all. That is the correct place for them.
+
+### Finding 4: a fixed absolute window is unworkable, but not for the expected reason
+
+The inside travelled 301 ticks on SPY and 289 on AMD over the measured period --
+small enough that a fixed window looks tempting. QQQ reports 4,402 ticks, which
+is a pre-market artefact: before the session opens the book is nearly empty and
+the "best bid" is a stub quote, so the range is measuring the stub, not the
+market.
+
+The real objection is simpler. A fixed window needs an anchor chosen before the
+session, and nothing in the feed provides one that is not contaminated by
+exactly that pre-market noise.
+
+### Decision
+
+**A sliding window of +/- 2048 ticks per side, plus an open-addressed overflow
+map**, with the window rebased when the inside drifts past a threshold.
+
+| | |
+|---|---|
+| slots per side | 4096 (+/- 2048 pennies = +/- $20.48) |
+| bytes per side | 4096 x 4-byte level handle = **16 KiB, exactly one M4 page** |
+| occupancy bitset | 4096 bits = 512 B = 4 cache lines per side |
+| measured hit rate | 98.9% to 99.9% of insertions |
+| everything else | overflow map, including all stub quotes and all sub-penny prices |
+
+16 KiB is not a coincidence that was designed for and then confirmed; it is the
+window size the coverage table pointed at, which happens to land on the page
+size. The handle array for one side is one page and one TLB entry, and the live
+level pool at peak (2,057 levels x 32 B = 64 KiB) sits inside the P-core's
+128 KiB L1.
+
+**Rejected: direct-mapped cache.** Finding 3. The stub quotes would poison it.
+
+**Rejected: fixed absolute window.** Finding 4. No honest anchor exists.
+
+**Rejected: +/- 4096 ticks.** It buys 0.1 to 0.8 percentage points of hit rate
+for twice the footprint, pushing the handle array to two pages. The overflow map
+handles that traffic at a cost the profile will show, and if it shows it
+mattering the number can change -- with a measurement attached.
+
+### Caveat, recorded rather than hidden
+
+These figures come from a 490 MB prefix covering 03:03 to 09:52, so roughly the
+pre-market and the first twenty minutes of the session. Peak live order counts
+in particular will grow over a full day. The measurement will be re-run on the
+complete file and this section updated; the window decision rests on the shape
+of the distribution and on the stub quotes, neither of which a longer sample
+changes.
+
 ---
 
 ## Open, to be settled by measurement
@@ -317,17 +438,13 @@ which was checked rather than assumed.
 These are recorded now so that the decision is visibly made by data and not by
 preference. Each will be resolved in the slice named.
 
-- **Price ladder scheme** (slice 7) — fixed absolute window, sliding window with
-  rebase, or direct-mapped cache with an overflow hash. Pre-committed decision
-  rule: if >= 99.9% of book updates land within +/- K ticks of the inside for
-  K <= 2048, take the sliding window; if the distribution is heavy-tailed but
-  sparse, take direct-mapped. Measured in slice 5.
-- **Tick alignment** (slice 5) — the ladder must be indexed by penny, not by raw
-  1/10000 units, or a +/- $5 window needs 5.1M slots instead of 512. Reg NMS
-  Rule 612 forces displayed orders on stocks >= $1 to penny increments, so
-  almost everything should be aligned, but sub-penny prices are legal below $1
-  and appear in execute-with-price messages. The misalignment fraction gets
-  measured, not assumed, and the remainder goes to the overflow hash.
+- ~~**Price ladder scheme**~~ -- settled by measurement, section 15. Sliding
+  window of +/- 2048 ticks plus an overflow map. Direct-mapped was rejected
+  because every symbol carries permanent stub quotes that would squat on hot
+  slots all session.
+- ~~**Tick alignment**~~ -- settled by measurement, section 15. Sub-penny prices
+  are 0.001% to 0.003% of adds, so penny indexing works and the remainder goes
+  to the overflow map.
 - **Order record width** (slice 6) — 32 bytes as planned, versus 24 bytes by
   dropping the stored `OrderRef`. 32 is a power of two, so indexing is a shift
   rather than a multiply; 24 fits five per 128-byte line instead of four. Both

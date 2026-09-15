@@ -4,3 +4,4 @@ function(itch_add_app name)
 endfunction()
 
 itch_add_app(itch_stats)
+itch_add_app(itch_histogram)

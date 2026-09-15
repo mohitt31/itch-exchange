@@ -1,0 +1,50 @@
+symbol           AMD (locate 331)
+messages         39,122,592 total, 318,476 applied
+  adds           150,682
+  executions     29,337 (7,871,505 shares)
+  cancels        1,053
+  deletes        113,008
+  replaces       24,396
+  trades ignored 4,129
+elapsed          3.17 s
+
+1. distance from the inside, in pennies, at insertion
+   measured       175,076 adds (2 had no inside yet)
+   improving      9,769 (5.580%)
+   max distance   19997904 ticks ($199979.04)
+
+   quantile            ticks    dollars
+   0.5000                  0       0.00
+   0.9000                 67       0.67
+   0.9900               1068      10.68
+   0.9990               2156      21.56
+   0.9999              17827     178.27
+   1.0000              65536     655.36
+
+   window              adds inside   coverage
+   +/-16                   143,214   81.8010%
+   +/-64                   150,895   86.1883%
+   +/-128                  162,975   93.0881%
+   +/-256                  166,012   94.8228%
+   +/-512                  170,047   97.1275%
+   +/-1024                 173,144   98.8965%
+   +/-2048                 174,831   99.8601%
+   +/-4096                 175,030   99.9737%
+   +/-8192                 175,052   99.9863%
+   +/-16384                175,054   99.9874%
+
+2. tick alignment
+   sub-penny      5 of 175,078 adds (0.002856%)
+   price range    $0.0001 .. $199999.9900
+
+3. live structure size
+   peak levels    1,798 (mean 1643.7)
+   peak orders    13,843 (mean 12192.6)
+   largest order  277,600 shares
+
+4. how far the inside travels
+   best bid range $19.5000 .. $22.3900
+   span           289 ticks
+   crossed states 0
+
+wrote measurements/AMD_partial.json
