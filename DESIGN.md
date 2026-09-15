@@ -152,6 +152,81 @@ is caught, context is printed, and the process exits non-zero.
 the deciding factor was `REQUIRE_ASSERT`, which would have needed a custom
 extension anyway.
 
+## 9. The wire header is generated from the specification, not typed
+
+`include/itch/wire/messages.hpp` is produced by `tools/gen_wire.py` from
+`tools/itch50_fields.json`, which `tools/extract_spec.py` pulls out of the
+official PDF (sha256 `45e0531d...`, recorded in the generated header). 23
+structs, 191 fields, 451 `static_assert`s.
+
+Typing 191 offsets by hand is a transcription exercise with a high chance of one
+silent error, and the error would be in the one place nothing else can catch it.
+Generating them means the failure mode is a parser crash on the first real
+message rather than a field that is quietly off by one for the whole day.
+
+The generated header is committed so that building needs no Python. CI
+regenerates it and diffs, so it cannot drift from the extracted tables.
+
+### The structs are all byte arrays
+
+Every member is `Bytes<N>` or `Alpha<N>`. That makes `alignof` 1 by construction
+and padding impossible, and both facts are asserted rather than assumed:
+
+```cpp
+static_assert(sizeof(AddOrder) == 36);
+static_assert(alignof(AddOrder) == 1);
+static_assert(std::is_standard_layout_v<AddOrder>);   // offsetof needs this
+static_assert(offsetof(AddOrder, price) == 32);
+static_assert(sizeof(AddOrder::price) == 4);
+```
+
+**Rejected:** packed structs with native integer members. It invites reading
+through the struct, which is the undefined behaviour described in section 3, and
+`#pragma pack` then hides the alignment question instead of answering it.
+
+### Three independent checks on the same layout
+
+The asserts alone would only prove the header is self-consistent. Three separate
+sources have to agree:
+
+1. **The extractor**, mechanically, from the PDF.
+2. **A hand-written table in `tests/test_wire.cpp`**, listing all 23 sizes typed
+   from the specification independently of the extractor. If the extractor
+   mis-parses a table, the two disagree and the test fails.
+3. **The real feed** (slice 4). NASDAQ's BinaryFILE framing prefixes every
+   message with its length, so asserting `framed_length == message_length(type)`
+   over the whole file checks all 23 sizes against reality hundreds of millions
+   of times.
+
+The static_asserts were also verified to be non-vacuous: injecting one extra
+byte into `AddOrder` fails the build on the size assert and on every downstream
+offset assert, as it should.
+
+### What the spec actually contains
+
+The current specification (April 2023) defines **23** message types, not 22.
+`'O'`, Direct Listing with Capital Raise, was added after the commonly cited
+list. All 23 are implemented.
+
+Two inconsistencies in the spec's own tables, both handled explicitly in
+`gen_wire.py`'s override table rather than silently:
+
+- The Reg SHO table calls the common header's second field **Locate Code**;
+  every other table calls the same field at the same offset **Stock Locate**.
+  Normalised, because the parser reads that field before it knows which message
+  it holds. The uniform-header test in `test_wire.cpp` is what found this.
+- Roughly a dozen field names are truncated by the PDF's column width. Offsets
+  and lengths are always taken from the extractor; only the names are completed
+  by hand, and the override table makes every such completion visible.
+
+## 10. Headers must compile on their own
+
+`tools/check_headers_selfcontained.sh` compiles each header as its own
+translation unit. This was not a hypothetical: `types.hpp` used `<=>` without
+including `<compare>` and compiled anyway, because every existing translation
+unit happened to include something that pulled it in first. It surfaced only
+when the header was compiled alone. Now CI compiles all of them alone.
+
 ---
 
 ## Open, to be settled by measurement

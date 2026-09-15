@@ -39,3 +39,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: No floating point below apps/
         run: ./tools/check_no_float.sh
+      - name: Headers are self-contained
+        run: ./tools/check_headers_selfcontained.sh
+      - name: Generated wire header is up to date
+        run: |
+          python3 tools/gen_wire.py tools/itch50_fields.json /tmp/messages.hpp
+          diff -u include/itch/wire/messages.hpp /tmp/messages.hpp

@@ -10,3 +10,4 @@ function(itch_add_test name)
 endfunction()
 
 itch_add_test(test_core)
+itch_add_test(test_wire)

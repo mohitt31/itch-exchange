@@ -11,6 +11,7 @@
 // replay journal. CI greps for float/double in these directories.
 #pragma once
 
+#include <compare>
 #include <cstdint>
 
 namespace itch {

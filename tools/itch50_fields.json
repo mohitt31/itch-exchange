@@ -1,0 +1,1309 @@
+[
+ {
+  "type": "S",
+  "desc": "System Event Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Event Code",
+    11,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 12
+ },
+ {
+  "type": "R",
+  "desc": "Stock Directory Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Market Category",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "",
+    20,
+    1,
+    "Alpha"
+   ],
+   [
+    "Round Lot Size",
+    21,
+    4,
+    "Integer"
+   ],
+   [
+    "Round Lots Only",
+    25,
+    1,
+    "Alpha"
+   ],
+   [
+    "Issue Classification",
+    26,
+    1,
+    "Alpha"
+   ],
+   [
+    "Issue Sub-Type",
+    27,
+    2,
+    "Alpha"
+   ],
+   [
+    "Authenticity",
+    29,
+    1,
+    "Alpha"
+   ],
+   [
+    "Short Sale",
+    30,
+    1,
+    "Alpha"
+   ],
+   [
+    "IPO Flag",
+    31,
+    1,
+    "Alpha"
+   ],
+   [
+    "LULDReference",
+    32,
+    1,
+    "Alpha"
+   ],
+   [
+    "ETP Flag",
+    33,
+    1,
+    "Alpha"
+   ],
+   [
+    "ETP Leverage",
+    34,
+    4,
+    "Integer"
+   ],
+   [
+    "Inverse Indicator",
+    38,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 39
+ },
+ {
+  "type": "H",
+  "desc": "Stock Trading Action Message.",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Trading State",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "Reserved",
+    20,
+    1,
+    "Alpha"
+   ],
+   [
+    "Reason",
+    21,
+    4,
+    "Alpha"
+   ]
+  ],
+  "size": 25
+ },
+ {
+  "type": "Y",
+  "desc": "Reg SHO Short Sale Price Test Restricted Indicator",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Locate Code",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Reg SHO Action",
+    19,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 20
+ },
+ {
+  "type": "L",
+  "desc": "Market Participant Position message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "MPID",
+    11,
+    4,
+    "Alpha"
+   ],
+   [
+    "Stock",
+    15,
+    8,
+    "Alpha"
+   ],
+   [
+    "Primary Market",
+    23,
+    1,
+    "Alpha"
+   ],
+   [
+    "Market Maker",
+    24,
+    1,
+    "Alpha"
+   ],
+   [
+    "Market",
+    25,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 26
+ },
+ {
+  "type": "V",
+  "desc": "Market wide circuit breaker Decline Level Message.",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Level 1",
+    11,
+    8,
+    "Price"
+   ],
+   [
+    "Level 2",
+    19,
+    8,
+    "Price"
+   ],
+   [
+    "Level 3",
+    27,
+    8,
+    "Price"
+   ]
+  ],
+  "size": 35
+ },
+ {
+  "type": "W",
+  "desc": "Market-Wide Circuit Breaker Status message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Breached Level",
+    11,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 12
+ },
+ {
+  "type": "K",
+  "desc": "IPO Quoting Period Update Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "IPO Quotation",
+    19,
+    4,
+    "Integer"
+   ],
+   [
+    "IPO Quotation",
+    23,
+    1,
+    "Alpha"
+   ],
+   [
+    "IPO Price",
+    24,
+    4,
+    "Price"
+   ]
+  ],
+  "size": 28
+ },
+ {
+  "type": "J",
+  "desc": "LULD Auction Collar",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Auction Collar Reference Price",
+    19,
+    4,
+    "Price"
+   ],
+   [
+    "Upper Auction Collar Price",
+    23,
+    4,
+    "Price"
+   ],
+   [
+    "Lower Auction Collar Price",
+    27,
+    4,
+    "Price"
+   ],
+   [
+    "Auction Collar",
+    31,
+    4,
+    "Integer"
+   ]
+  ],
+  "size": 35
+ },
+ {
+  "type": "h",
+  "desc": "Operational Halt",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Market Code",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "Operational",
+    20,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 21
+ },
+ {
+  "type": "A",
+  "desc": "Add Order - No MPID Attribution Message.",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Buy/Sell Indicator",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "Shares",
+    20,
+    4,
+    "Integer"
+   ],
+   [
+    "Stock",
+    24,
+    8,
+    "Alpha"
+   ],
+   [
+    "Price",
+    32,
+    4,
+    "Price"
+   ]
+  ],
+  "size": 36
+ },
+ {
+  "type": "F",
+  "desc": "Add Order - MPID Attribution Message.",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Buy/Sell Indicator",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "Shares",
+    20,
+    4,
+    "Integer"
+   ],
+   [
+    "Stock",
+    24,
+    8,
+    "Alpha"
+   ],
+   [
+    "Price",
+    32,
+    4,
+    "Price"
+   ],
+   [
+    "Attribution",
+    36,
+    4,
+    "Alpha"
+   ]
+  ],
+  "size": 40
+ },
+ {
+  "type": "E",
+  "desc": "Add Order - Order Executed Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Executed Shares",
+    19,
+    4,
+    "Integer"
+   ],
+   [
+    "Match Number",
+    23,
+    8,
+    "Integer"
+   ]
+  ],
+  "size": 31
+ },
+ {
+  "type": "C",
+  "desc": "Add Order -Order Executed with Price Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Executed Shares",
+    19,
+    4,
+    "Integer"
+   ],
+   [
+    "Match Number",
+    23,
+    8,
+    "Integer"
+   ],
+   [
+    "Printable",
+    31,
+    1,
+    "Alpha"
+   ],
+   [
+    "Execution Price",
+    32,
+    4,
+    "Price"
+   ]
+  ],
+  "size": 36
+ },
+ {
+  "type": "X",
+  "desc": "Order Cancel Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference Number",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Cancelled Shares",
+    19,
+    4,
+    "Integer"
+   ]
+  ],
+  "size": 23
+ },
+ {
+  "type": "D",
+  "desc": "Order Delete Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference Number",
+    11,
+    8,
+    "Integer"
+   ]
+  ],
+  "size": 19
+ },
+ {
+  "type": "U",
+  "desc": "Order Replace Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Original Order",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "New Order",
+    19,
+    8,
+    "Integer"
+   ],
+   [
+    "Shares",
+    27,
+    4,
+    "Integer"
+   ],
+   [
+    "Price",
+    31,
+    4,
+    "Price"
+   ]
+  ],
+  "size": 35
+ },
+ {
+  "type": "P",
+  "desc": "Trade Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Order Reference",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Buy/Sell Indicator",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "Shares",
+    20,
+    4,
+    "Integer"
+   ],
+   [
+    "Stock",
+    24,
+    8,
+    "Alpha"
+   ],
+   [
+    "Price",
+    32,
+    4,
+    "Price"
+   ],
+   [
+    "Match Number",
+    36,
+    8,
+    "Integer"
+   ]
+  ],
+  "size": 44
+ },
+ {
+  "type": "Q",
+  "desc": "Cross Trade Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Shares",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Stock",
+    19,
+    8,
+    "Alpha"
+   ],
+   [
+    "Cross Price",
+    27,
+    4,
+    "Price"
+   ],
+   [
+    "Match Number",
+    31,
+    8,
+    "Integer"
+   ],
+   [
+    "Cross Type",
+    39,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 40
+ },
+ {
+  "type": "B",
+  "desc": "Broken Trade Message.",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Match Number",
+    11,
+    8,
+    "Integer"
+   ]
+  ],
+  "size": 19
+ },
+ {
+  "type": "I",
+  "desc": "NOII Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Paired Shares",
+    11,
+    8,
+    "Integer"
+   ],
+   [
+    "Imbalance Shares",
+    19,
+    8,
+    "Integer"
+   ],
+   [
+    "Imbalance Direction",
+    27,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock",
+    28,
+    8,
+    "Alpha"
+   ],
+   [
+    "Far Price",
+    36,
+    4,
+    "Price"
+   ],
+   [
+    "Near Price",
+    40,
+    4,
+    "Price"
+   ],
+   [
+    "Current Reference",
+    44,
+    4,
+    "Price"
+   ],
+   [
+    "Cross Type",
+    48,
+    1,
+    "Alpha"
+   ],
+   [
+    "Price Variation",
+    49,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 50
+ },
+ {
+  "type": "N",
+  "desc": "Retail Interest message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Interest Flag",
+    19,
+    1,
+    "Alpha"
+   ]
+  ],
+  "size": 20
+ },
+ {
+  "type": "O",
+  "desc": "Direct Listing with Capital Raise Message",
+  "fields": [
+   [
+    "Message Type",
+    0,
+    1,
+    "Alpha"
+   ],
+   [
+    "Stock Locate",
+    1,
+    2,
+    "Integer"
+   ],
+   [
+    "Tracking Number",
+    3,
+    2,
+    "Integer"
+   ],
+   [
+    "Timestamp",
+    5,
+    6,
+    "Integer"
+   ],
+   [
+    "Stock",
+    11,
+    8,
+    "Alpha"
+   ],
+   [
+    "Open Eligibility Status",
+    19,
+    1,
+    "Alpha"
+   ],
+   [
+    "Minimum Allowable Price",
+    20,
+    4,
+    "Price"
+   ],
+   [
+    "Maximum Allowable Price",
+    24,
+    4,
+    "Price"
+   ],
+   [
+    "Near Execution Price",
+    28,
+    4,
+    "Price"
+   ],
+   [
+    "Near Execution Time",
+    32,
+    8,
+    "Integer"
+   ],
+   [
+    "Lower Price Range Collar",
+    40,
+    4,
+    "Price"
+   ],
+   [
+    "Upper Price Range Collar",
+    44,
+    4,
+    "Price"
+   ]
+  ],
+  "size": 48
+ }
+]

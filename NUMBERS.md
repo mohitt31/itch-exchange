@@ -84,6 +84,10 @@ Source: `https://emi.nasdaq.com/ITCH/Nasdaq ITCH/`
 | `01302020.NASDAQ_ITCH50.gz` | 5,597,158,940 B | alternative |
 | `01302018.NASDAQ_ITCH50.gz` | 1,245 B | broken stub, unusable |
 
+Specification: `NQTVITCHspecification.pdf`, 1,200,722 B,
+sha256 `45e0531d1b4b3beb886e9618b2ab824a5aa9bda3a99c0dff03509306e68aacc3`.
+It defines 23 message types (the April 2023 revision added `'O'`).
+
 ```
 curl -sI "https://emi.nasdaq.com/ITCH/Nasdaq%20ITCH/01302019.NASDAQ_ITCH50.gz"
 ```
@@ -130,6 +134,9 @@ done
 | `release-checked` | 1/1 suites, 19 tests, 0 failed |
 | `asan-ubsan` | 1/1 suites, 19 tests, 0 failed |
 | `tsan` | 1/1 suites, 19 tests, 0 failed |
+
+After slice 2 (wire layout), 28 tests across 2 suites, passing under all four
+configurations, plus 451 `static_assert`s on message sizes and field offsets.
 
 The `tsan` result is **trivially clean**: the pipeline is single-threaded by
 design and the cut list forbids threading inside the book. The configuration is
