@@ -10,6 +10,13 @@
 //   itch_stats <file.gz>       gzip, streamed
 //   itch_stats -               stdin, gzip auto-detected
 //   itch_stats --json ...      machine readable summary
+//   itch_stats --by-symbol N   also list the N busiest symbols
+//
+// --by-symbol exists to pick the corpus symbol from measured activity rather
+// than from a guess about which names are liquid. It counts the messages that
+// actually move a book (A F E C X D U), keyed by stock locate code, and gets
+// the code to symbol mapping from the stock directory messages NASDAQ sends at
+// the start of the session.
 
 #include <algorithm>
 #include <array>
@@ -18,6 +25,7 @@
 #include <cstring>
 #include <span>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "itch/wire/framing.hpp"
@@ -30,8 +38,26 @@ using namespace itch::wire;
 
 namespace {
 
+// Messages that mutate a book. Trades and crosses are reports and do not.
+constexpr bool moves_book(unsigned char t) {
+    switch (t) {
+        case 'A': case 'F': case 'E': case 'C': case 'X': case 'D': case 'U':
+            return true;
+        default:
+            return false;
+    }
+}
+
+struct SymbolTable {
+    std::vector<std::string> name = std::vector<std::string>(65536);
+    std::vector<u64>         book_messages = std::vector<u64>(65536, 0);
+    std::vector<u64>         all_messages = std::vector<u64>(65536, 0);
+    bool                     enabled = false;
+};
+
 struct Stats {
     std::array<u64, 256> by_type{};
+    SymbolTable          symbols;
     u64                  messages = 0;
     u64                  payload_bytes = 0;
     u64                  framed_bytes = 0;
@@ -52,6 +78,17 @@ struct Stats {
             saw_timestamp = true;
         }
         last_timestamp = ts;
+
+        if (symbols.enabled) {
+            const u16 locate = load_be<u16>(f.data() + 1);
+            symbols.all_messages[locate]++;
+            if (moves_book(type)) {
+                symbols.book_messages[locate]++;
+            } else if (type == 'R') {
+                const wire::StockDirectoryView v{f.data()};
+                symbols.name[locate] = std::string(wire::trim_alpha(v.stock()));
+            }
+        }
     }
 };
 
@@ -112,7 +149,7 @@ bool ends_with(const std::string& s, const char* suffix) {
 }
 
 void report_text(const Stats& s, const Outcome& out, double seconds, const std::string& src,
-                 const char* path) {
+                 const char* path, std::size_t top_symbols) {
     std::printf("input            %s (%s)\n", path, src.c_str());
     std::printf("messages         %s\n", commas(s.messages).c_str());
     std::printf("payload bytes    %s\n", commas(s.payload_bytes).c_str());
@@ -159,6 +196,31 @@ void report_text(const Stats& s, const Outcome& out, double seconds, const std::
     std::printf("%s\n%-4s %-34s %14s %7.3f%%\n", std::string(64, '-').c_str(), "", "total",
                 commas(s.messages).c_str(), s.messages != 0 ? 100.0 : 0.0);
 
+    if (s.symbols.enabled) {
+        std::vector<std::tuple<u64, u64, unsigned>> sym;
+        for (unsigned i = 0; i < 65536; ++i) {
+            if (s.symbols.book_messages[i] != 0) {
+                sym.emplace_back(s.symbols.book_messages[i], s.symbols.all_messages[i], i);
+            }
+        }
+        std::sort(sym.begin(), sym.end(), std::greater<>());
+        std::printf("\n%zu symbols with book activity\n", sym.size());
+        std::printf("\n%-10s %-8s %16s %16s %8s\n", "symbol", "locate", "book msgs",
+                    "all msgs", "share");
+        std::printf("%s\n", std::string(64, '-').c_str());
+        const std::size_t show = std::min<std::size_t>(sym.size(), top_symbols);
+        for (std::size_t i = 0; i < show; ++i) {
+            const auto [book_msgs, all_msgs, locate] = sym[i];
+            const std::string& nm = s.symbols.name[locate];
+            std::printf("%-10s %-8u %16s %16s %7.3f%%\n",
+                        nm.empty() ? "?" : nm.c_str(), locate, commas(book_msgs).c_str(),
+                        commas(all_msgs).c_str(),
+                        s.messages != 0 ? 100.0 * static_cast<double>(book_msgs) /
+                                              static_cast<double>(s.messages)
+                                        : 0.0);
+        }
+    }
+
     // Types defined by the spec that never appeared.
     std::string missing;
     for (unsigned t = 0; t < 256; ++t) {
@@ -204,11 +266,14 @@ void report_json(const Stats& s, const Outcome& out, double seconds, const char*
 
 int main(int argc, char** argv) {
     bool        json = false;
+    std::size_t top_symbols = 0;
     const char* path = nullptr;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--json") {
             json = true;
+        } else if (a == "--by-symbol" && i + 1 < argc) {
+            top_symbols = static_cast<std::size_t>(std::stoul(argv[++i]));
         } else {
             path = argv[i];
         }
@@ -221,6 +286,7 @@ int main(int argc, char** argv) {
     }
 
     Stats   stats;
+    stats.symbols.enabled = top_symbols != 0;
     Outcome out;
     std::string source_kind;
     const auto t0 = std::chrono::steady_clock::now();
@@ -253,7 +319,7 @@ int main(int argc, char** argv) {
     if (json) {
         report_json(stats, out, seconds, path);
     } else {
-        report_text(stats, out, seconds, source_kind, path);
+        report_text(stats, out, seconds, source_kind, path, top_symbols);
     }
     return out.status == FrameStatus::Malformed ? 1 : 0;
 }
