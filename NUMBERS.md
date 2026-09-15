@@ -147,9 +147,17 @@ configurations, plus 451 `static_assert`s on message sizes and field offsets.
 | `test_gzip` | 6 |
 | `test_map_book` | 15 |
 | `test_pool` | 17 |
-| `test_ladder` | 11 |
+| `test_ladder` | 12 |
+| `test_flat_book` | 9 |
+| `test_order_index` | 10 |
 
-Total 102 after slice 7 (price ladder).
+Total 122 after slice 8 (flat book and order index).
+
+The three-way differential suite was mutation-tested: three deliberate bugs
+injected one at a time into `FlatBook`, each caught. Queue tail not updated ->
+an invariant assertion in `add`. Best not recomputed when the top level clears
+-> the differential comparison. Cleared level left in the ladder -> the pool's
+stale-handle detector.
 
 The `tsan` result is **trivially clean**: the pipeline is single-threaded by
 design and the cut list forbids threading inside the book. The configuration is

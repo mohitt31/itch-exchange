@@ -561,6 +561,104 @@ The test now says so, and skips at level 0. This is the three-level assertion
 scheme from section 2 doing its job: the failure was the test asserting a cost
 the design deliberately does not pay in release.
 
+## 18. FlatBook: what the layout actually buys
+
+The pieces from sections 15 to 17 assembled. The shape in one sentence: an order
+reference becomes a 32-bit handle through an open-addressed index, the handle
+names a 32-byte record in a pool, and the record carries a handle to its price
+level so that **cancel never consults the ladder at all**.
+
+That last point is the design. On the measured feed, adds are 42% of messages
+and deletes 39%. A delete that does not clear its level touches exactly two
+cache lines: the index entry and the order record. The ladder is only read when
+a level is created and only written when one is created or destroyed.
+
+### Cached best, and what "correct shift" costs
+
+`best(side)` is a load from a cached `Price`, not a scan. The cache is
+maintained by two rules:
+
+- an add that is better than the current best replaces it;
+- a level clearing at a price that is *not* the best changes nothing.
+
+Only when the top level clears does the cache have to be recomputed, and that is
+the occupancy bitset's `clz`/`ctz` scan. `best_recomputes()` counts how often
+that happens, and `flat_best_shifts_when_the_top_clears` asserts the counter
+does **not** move when a level clears behind the top -- otherwise the cache
+would be correct by accident, recomputing every time.
+
+`kNoPrice` is zero and no order can rest at zero, so it doubles as the "this
+side is empty" marker and the cache needs no separate flag.
+
+### The order index
+
+Open addressing, linear probing, load factor at or below 0.5, backward-shift
+deletion so no tombstone accumulates over a day of churn. Entries are 16 bytes:
+eight per 128-byte M4 cache line, so a probe that misses usually stays on the
+line it started on.
+
+The table is sized and prefaulted at construction and **never resizes during
+replay** -- that is an assertion, not a growth path. Rehashing mid-run would
+move every entry and put a multi-millisecond spike into exactly the tail this
+project reports.
+
+The hash is a template parameter, `Identity` or `Mixed`. NASDAQ order references
+are near-sequential, which makes identity hashing genuinely plausible: under
+linear probing, sequential keys fill the table in order and probe perfectly. It
+is also exactly the kind of thing that is obvious until it is wrong, so both are
+built, both are tested, and the choice will be made by the benchmark rather than
+by this paragraph.
+
+**Rejected:** `std::unordered_map` -- a node and a pointer chase per lookup, on
+the hottest path in the program. Swiss-table SIMD metadata -- at 16-byte entries
+and load factor 0.5 plain probing should match it, and it is complexity this
+project does not need. That one is a judgement, not a measurement, and is
+recorded as such.
+
+### Backward-shift deletion is where the bug would be
+
+Linear probing promises that every live entry is reachable from its ideal slot
+without crossing an empty one. Deleting an entry can break that for everything
+behind it, and the repair (Knuth's algorithm R) has to move those entries back
+across the hole. Get the cyclic interval test wrong and lookups silently start
+missing entries that are still in the table -- for some keys, not all.
+
+So `OrderIndex::validate()` re-derives that property for every live entry, and
+`test_order_index` builds collision chains by hand under identity hashing
+(where keys 0, N, 2N all land on slot 0) including one that wraps past the end
+of the table, then deletes from the front and the middle of them.
+
+### Three implementations, one answer
+
+`NaiveBook` recomputes everything from a flat vector and has no incremental
+state to corrupt. `MapBook` is the textbook structure. `FlatBook` is the one
+that controls its own memory layout and therefore the one with somewhere to
+hide. All three are driven with the same 40,000 random operations -- a drifting
+mid so the ladder rebases, and a mix of near, far, stub-quote and sub-penny
+prices matching the measured shape of the real feed -- and compared including
+per-level queue order, so price-time priority is compared and not just depth.
+
+`book_digest` folds both sides, every level in price order and every order in
+queue order, into one 64-bit number. If that matches, the books match.
+
+### The differential tests were mutation-tested
+
+Three deliberate bugs, injected one at a time, to check the suite can actually
+see them:
+
+| injected bug | caught by |
+|---|---|
+| queue tail not updated, breaking FIFO | an invariant assertion in `add` |
+| best not recomputed when the top clears | the differential comparison, 2 tests |
+| cleared level left in the ladder | **the pool's stale-handle detector** |
+
+The third is worth dwelling on. Leaving a freed level in the ladder means the
+next lookup at that price returns a handle to a slot that has been recycled.
+Without the generation check that is a silent read of whatever now occupies the
+slot, and the book would go quietly wrong. With it, the run stops at the exact
+operation that did it. That is the entire argument for generation-checked
+handles, demonstrated rather than asserted.
+
 ---
 
 ## Open, to be settled by measurement
@@ -575,14 +673,8 @@ preference. Each will be resolved in the slice named.
 - ~~**Tick alignment**~~ -- settled by measurement, section 15. Sub-penny prices
   are 0.001% to 0.003% of adds, so penny indexing works and the remainder goes
   to the overflow map.
-- **Order record width** (slice 6) — 32 bytes as planned, versus 24 bytes by
-  dropping the stored `OrderRef`. 32 is a power of two, so indexing is a shift
-  rather than a multiply; 24 fits five per 128-byte line instead of four. Both
-  get built behind the same interface and benchmarked.
-- **Levels inline in the ladder, or behind a handle** (slice 7) — inline makes
-  the ladder 128 KB per side and mostly empty; handles make it 16 KB, exactly
-  one M4 page, with levels densely packed, at the cost of one extra dependent
-  load. Benchmarked.
-- **Order reference hash** (slice 8) — NASDAQ order references are
-  near-sequential, which makes identity hashing plausible and possibly optimal
-  for linear probing. Identity versus a splitmix64 finaliser, benchmarked.
+- **Order record width** — 32 bytes as built, versus 24 bytes by dropping the
+  stored `OrderRef`. 32 is a power of two, so indexing is a shift rather than a
+  multiply; 24 fits five per 128-byte line instead of four. To be benchmarked.
+- **Order reference hash** — `Identity` versus `Mixed` are both built and both
+  tested (section 18). To be benchmarked; the number decides.
