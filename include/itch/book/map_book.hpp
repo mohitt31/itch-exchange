@@ -43,14 +43,14 @@ public:
 
     // --- mutations -------------------------------------------------------
 
-    void add(OrderRef ref, Side side, Price price, Qty qty) {
+    void add(OrderRef ref, Side side, Price price, Qty qty, u16 owner = 0) {
         ITCH_ASSERT_MSG(qty > 0, "an order with no quantity cannot rest");
         ITCH_ASSERT_MSG(orders_.find(ref) == orders_.end(),
                         "order reference added twice");
         if (side == Side::Buy) {
-            insert(bids_, ref, side, price, qty);
+            insert(bids_, ref, side, price, qty, owner);
         } else {
-            insert(asks_, ref, side, price, qty);
+            insert(asks_, ref, side, price, qty, owner);
         }
     }
 
@@ -86,8 +86,9 @@ public:
         const Entry* e = find(old_ref);
         ITCH_ASSERT_MSG(e != nullptr, "replace of an order that is not resting");
         const Side side = e->side;
+        const u16  owner = e->owner;
         remove(old_ref);
-        add(new_ref, side, price, qty);
+        add(new_ref, side, price, qty, owner);
     }
 
     // --- queries ---------------------------------------------------------
@@ -230,11 +231,28 @@ public:
         return e->qty;
     }
 
+    [[nodiscard]] u16 owner_of(OrderRef ref) const {
+        const Entry* e = find(ref);
+        ITCH_ASSERT_MSG(e != nullptr, "owner_of for an order that is not resting");
+        return e->owner;
+    }
+
+    [[nodiscard]] OrderRef front_at(Side s, Price p) const {
+        if (s == Side::Buy) {
+            const auto it = bids_.find(p);
+            return (it == bids_.end() || it->second.fifo.empty()) ? 0
+                                                                  : it->second.fifo.front();
+        }
+        const auto it = asks_.find(p);
+        return (it == asks_.end() || it->second.fifo.empty()) ? 0 : it->second.fifo.front();
+    }
+
 private:
     struct Entry {
         Side                          side;
         Price                         price;
         Qty                           qty;
+        u16                           owner;
         std::list<OrderRef>::iterator pos;
     };
 
@@ -249,7 +267,7 @@ private:
     }
 
     template <class Map>
-    void insert(Map& m, OrderRef ref, Side side, Price price, Qty qty) {
+    void insert(Map& m, OrderRef ref, Side side, Price price, Qty qty, u16 owner) {
         auto [it, fresh] = m.try_emplace(price);
         if (fresh) {
             stats_.level_count[side_index(side)]++;
@@ -258,7 +276,7 @@ private:
         it->second.qty += qty;
         stats_.total_qty[side_index(side)] += qty;
         stats_.order_count++;
-        orders_.emplace(ref, Entry{side, price, qty, std::prev(it->second.fifo.end())});
+        orders_.emplace(ref, Entry{side, price, qty, owner, std::prev(it->second.fifo.end())});
     }
 
     void reduce(Entry& e, OrderRef ref, Qty shares) {

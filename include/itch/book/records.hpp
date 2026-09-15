@@ -28,7 +28,11 @@ struct Order {
     LevelHandle level;  // 24   4  back-pointer, so cancel never touches the ladder
     u8          side;   // 28   1
     u8          gen;    // 29   1  pool generation, odd while live
-    u16         flags;  // 30   2
+    u16         owner;  // 30   2  participant id; 0 on the replay path, since
+                        //         ITCH carries no participant identity. The
+                        //         matching engine uses it for self-trade
+                        //         prevention, at no cost in size: this field
+                        //         was padding either way.
 
     // While an order sits in the free list it is in no queue, so the forward
     // queue link carries the free list link. Same field, same type, no punning.

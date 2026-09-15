@@ -5,3 +5,4 @@ endfunction()
 
 itch_add_app(itch_stats)
 itch_add_app(itch_histogram)
+itch_add_app(itch_replay)

@@ -91,6 +91,8 @@ public:
         }
     }
 
+    void note_reduction(Side, Qty) noexcept {}
+
     template <class Book>
     void after_apply(const Book& book, Timestamp) {
         const u32 levels =

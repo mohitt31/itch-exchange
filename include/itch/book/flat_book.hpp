@@ -48,7 +48,7 @@ public:
 
     // --- mutations -------------------------------------------------------
 
-    void add(OrderRef ref, Side side, Price price, Qty qty) {
+    void add(OrderRef ref, Side side, Price price, Qty qty, u16 owner = 0) {
         ITCH_ASSERT_MSG(qty > 0, "an order with no quantity cannot rest");
         ITCH_INVARIANT_MSG(index_.find(ref).is_null(), "order reference added twice");
 
@@ -60,7 +60,7 @@ public:
         o.prev = OrderHandle{};
         o.next = OrderHandle{};
         o.side = static_cast<u8>(side);
-        o.flags = 0;
+        o.owner = owner;
 
         const LevelHandle lh = level_for(side, price);
         o.level = lh;
@@ -105,8 +105,9 @@ public:
     void replace(OrderRef old_ref, OrderRef new_ref, Price price, Qty qty) {
         const OrderHandle oh = require(old_ref, "replace of an order that is not resting");
         const Side        side = static_cast<Side>(orders_[oh].side);
+        const u16         owner = orders_[oh].owner;
         reduce(oh, orders_[oh].qty);
-        add(new_ref, side, price, qty);
+        add(new_ref, side, price, qty, owner);
     }
 
     // --- queries ---------------------------------------------------------
@@ -141,6 +142,20 @@ public:
     }
     [[nodiscard]] Qty qty_of(OrderRef ref) const {
         return orders_[require(ref, "qty_of for a missing order")].qty;
+    }
+    [[nodiscard]] u16 owner_of(OrderRef ref) const {
+        return orders_[require(ref, "owner_of for a missing order")].owner;
+    }
+
+    // Head of the queue at the given price: the order with time priority. The
+    // matching engine's only entry point into queue order.
+    [[nodiscard]] OrderRef front_at(Side s, Price p) const {
+        const LevelHandle lh = ladders_[side_index(s)].find(p);
+        if (lh.is_null()) {
+            return 0;
+        }
+        const OrderHandle oh = levels_[lh].head;
+        return oh.is_null() ? 0 : orders_[oh].ref;
     }
 
     [[nodiscard]] bool crossed() const noexcept {

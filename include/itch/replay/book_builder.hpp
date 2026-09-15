@@ -35,6 +35,8 @@ struct NullObserver {
     template <class Book>
     void before_add(const Book&, Side, Price, Qty) noexcept {}
 
+    void note_reduction(Side, Qty) noexcept {}
+
     template <class Book>
     void after_apply(const Book&, Timestamp) noexcept {}
 };
@@ -105,6 +107,8 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
+        observer_.note_reduction(book_.side_of(v.order_reference_number()),
+                                 v.executed_shares());
         book_.execute(v.order_reference_number(), v.executed_shares());
         stats_.executions++;
         stats_.executed_shares += v.executed_shares();
@@ -120,6 +124,8 @@ public:
         // The execution price differs from the resting price, but the resting
         // order is still reduced by the executed quantity. The price on this
         // message describes the print, not the book.
+        observer_.note_reduction(book_.side_of(v.order_reference_number()),
+                                 v.executed_shares());
         book_.execute(v.order_reference_number(), v.executed_shares());
         stats_.executions++;
         stats_.executed_shares += v.executed_shares();
@@ -132,6 +138,8 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
+        observer_.note_reduction(book_.side_of(v.order_reference_number()),
+                                 v.cancelled_shares());
         book_.cancel(v.order_reference_number(), v.cancelled_shares());
         stats_.cancels++;
         stats_.applied++;
@@ -143,6 +151,8 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
+        observer_.note_reduction(book_.side_of(v.order_reference_number()),
+                                 book_.qty_of(v.order_reference_number()));
         book_.remove(v.order_reference_number());
         stats_.deletes++;
         stats_.applied++;
@@ -154,10 +164,11 @@ public:
         if (!mine(v.stock_locate())) {
             return;
         }
-        // A replace is a delete plus an add, so the observer sees the add half
-        // the same way it would see a standalone one.
-        observer_.before_add(book_, book_.side_of(v.original_order_reference_number()),
-                             v.price(), v.shares());
+        // A replace is a delete plus an add, so the observer sees both halves
+        // the same way it would see them standalone.
+        const Side rside = book_.side_of(v.original_order_reference_number());
+        observer_.note_reduction(rside, book_.qty_of(v.original_order_reference_number()));
+        observer_.before_add(book_, rside, v.price(), v.shares());
         book_.replace(v.original_order_reference_number(), v.new_order_reference_number(),
                       v.price(), v.shares());
         stats_.replaces++;
