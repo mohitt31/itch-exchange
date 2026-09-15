@@ -1,0 +1,65 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "release (-O3, no invariant checks)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ITCH_INVARIANT_LEVEL": "0"
+      }
+    },
+    {
+      "name": "release-checked",
+      "inherits": "base",
+      "displayName": "release-checked (-O3 with O(1) invariants on)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ITCH_INVARIANT_LEVEL": "1"
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "inherits": "base",
+      "displayName": "asan + ubsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "",
+        "ITCH_INVARIANT_LEVEL": "2",
+        "ITCH_NATIVE_ARCH": "OFF",
+        "CMAKE_CXX_FLAGS": "-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "base",
+      "displayName": "tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "",
+        "ITCH_INVARIANT_LEVEL": "2",
+        "ITCH_NATIVE_ARCH": "OFF",
+        "CMAKE_CXX_FLAGS": "-O1 -g -fno-omit-frame-pointer -fsanitize=thread",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "release-checked", "configurePreset": "release-checked" },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan" },
+    { "name": "tsan", "configurePreset": "tsan" }
+  ],
+  "testPresets": [
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "release-checked", "configurePreset": "release-checked", "output": { "outputOnFailure": true } },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan", "output": { "outputOnFailure": true } },
+    { "name": "tsan", "configurePreset": "tsan", "output": { "outputOnFailure": true } }
+  ]
+}
