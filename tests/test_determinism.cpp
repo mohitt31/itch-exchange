@@ -38,6 +38,19 @@ using itch::test::WireBuilder;
 
 namespace {
 
+// Sanitizer builds run this roughly twenty times slower, and a suite that takes
+// five minutes is a suite people stop running. The claims are unchanged -- ten
+// runs, three implementations, four validation intervals -- only the session is
+// shorter. Every message type and every code path is still exercised; there are
+// simply fewer of them.
+#if ITCH_INVARIANT_LEVEL >= 2
+constexpr int kSessionScale = 5;
+#else
+constexpr int kSessionScale = 1;
+#endif
+
+constexpr int scaled(int n) { return n / kSessionScale; }
+
 // A synthetic ITCH session, so CI can run this without the multi-gigabyte
 // corpus. Shaped like the measured feed: mostly adds and deletes, occasional
 // stub quotes, and optionally a drifting mid so the ladder has to rebase.
@@ -172,7 +185,7 @@ u64 replay_digest(std::span<const std::byte> feed, u64 validate_every, bool stri
 }  // namespace
 
 ITCH_TEST(determinism_same_input_same_digest_ten_times) {
-    const WireBuilder feed = synthetic_session(0x5EED0060, 40000);
+    const WireBuilder feed = synthetic_session(0x5EED0060, scaled(40000));
     const u64         first = replay_digest<FlatBook>(feed.span(), 0);
     ITCH_REQUIRE_NE(first, u64{0});
     for (int i = 1; i < 10; ++i) {
@@ -182,7 +195,7 @@ ITCH_TEST(determinism_same_input_same_digest_ten_times) {
 }
 
 ITCH_TEST(determinism_three_implementations_agree) {
-    const WireBuilder feed = synthetic_session(0x5EED0061, 40000);
+    const WireBuilder feed = synthetic_session(0x5EED0061, scaled(40000));
     const u64         flat = replay_digest<FlatBook>(feed.span(), 0);
     ITCH_CHECK_EQ(replay_digest<AvlBook>(feed.span(), 0), flat);
     ITCH_CHECK_EQ(replay_digest<MapBook>(feed.span(), 0), flat);
@@ -193,7 +206,7 @@ ITCH_TEST(determinism_does_not_depend_on_the_validation_interval) {
     // digest in at --validate-every made it a function of the flags too, and
     // that looked exactly like a miscompilation when a release run was compared
     // against a differently configured sanitizer run.
-    const WireBuilder feed = synthetic_session(0x5EED0062, 20000);
+    const WireBuilder feed = synthetic_session(0x5EED0062, scaled(20000));
     const u64         base = replay_digest<FlatBook>(feed.span(), 0);
     for (u64 every : {u64{1}, u64{7}, u64{999}, u64{50000}}) {
         ITCH_TEST_CONTEXT("validate_every=" + std::to_string(every));
@@ -208,8 +221,8 @@ ITCH_TEST(determinism_digest_reacts_to_a_single_changed_share) {
     // slightly inconsistent -- a later execute sized against the original
     // quantity now leaves a sliver resting. That is fine for this test, which
     // only asks whether the digest notices, and it is why it runs non-strict.
-    WireBuilder a = synthetic_session(0x5EED0063, 5000);
-    WireBuilder b = synthetic_session(0x5EED0063, 5000);
+    WireBuilder a = synthetic_session(0x5EED0063, scaled(5000));
+    WireBuilder b = synthetic_session(0x5EED0063, scaled(5000));
     ITCH_REQUIRE_EQ(replay_digest<FlatBook>(a.span(), 0), replay_digest<FlatBook>(b.span(), 0));
 
     // Same stream, one order one share larger.
@@ -232,7 +245,7 @@ ITCH_TEST(determinism_digest_reacts_to_a_single_changed_share) {
 ITCH_TEST(determinism_invariants_hold_on_a_synthetic_session) {
     // No drift, so the generated session cannot cross by construction and the
     // strict assertion is meaningful.
-    const WireBuilder feed = synthetic_session(0x5EED0064, 60000, /*drift=*/false);
+    const WireBuilder feed = synthetic_session(0x5EED0064, scaled(60000), /*drift=*/false);
     FlatBook          book;
     BookBuilder<FlatBook, ReplayObserver> builder{book, "TEST", ReplayObserver{1000, true}};
     FrameCursor                cur{feed.span()};
@@ -243,7 +256,7 @@ ITCH_TEST(determinism_invariants_hold_on_a_synthetic_session) {
     book.validate();
     const auto& c = builder.observer().counters();
     ITCH_CHECK_EQ(c.crossed_states, u64{0});
-    ITCH_CHECK_GT(c.applied, u64{1000});
+    ITCH_CHECK_GT(c.applied, u64{1000} / kSessionScale);
     ITCH_CHECK_GT(c.full_validations, u64{0});
     // Quantity conservation, re-derived one more time at the end.
     ITCH_CHECK_EQ(book.stats().total_qty[0], c.expected_qty[0]);
