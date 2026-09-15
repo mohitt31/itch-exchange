@@ -431,6 +431,69 @@ complete file and this section updated; the window decision rests on the shape
 of the distribution and on the stub quotes, neither of which a longer sample
 changes.
 
+## 16. Handles, generations, and what the detector actually guarantees
+
+Orders and levels live in pools and are addressed by 32-bit handles: 24-bit slot
+index, 8-bit generation. Handles rather than pointers because they are half the
+size -- two of them sit in every order record, which is sized to fit four per
+cache line -- because they survive the pool being reallocated, and because a
+pointer cannot tell you its target has been freed.
+
+Tagged, so `OrderHandle` and `LevelHandle` are different types. This is the
+second place strong typing earns its keep by the rule in section 5: both are
+u32 indices into a pool, both are in range, and confusing them produces a book
+that looks entirely plausible.
+
+### The generation's low bit is the live flag
+
+Incremented on both allocate and free, so an odd generation means live and an
+even one means free. One compare on the handle's own generation answers both
+"is this the slot I was given?" and "is it still alive?", and it reads the byte
+that is already on the cache line the caller is about to use.
+
+**The cost, stated plainly:** the generation now wraps every 128 allocate/free
+cycles on a slot rather than 256. A handle held across exactly 128 reuses is
+accepted again.
+
+That limit is not hypothetical and it is not hidden --
+`pool_generation_wraps_without_quarantine` drives a one-slot pool through
+exactly 127 cycles (still caught) and then 128 (accepted), so the boundary is
+pinned by a test rather than by a comment. This is a bug detector, not a
+security boundary.
+
+**Mitigation:** the sanitizer builds hold 4096 freed slots in a quarantine
+before they can be reused, so a stale handle names a slot whose generation has
+certainly moved. That is a per-pool parameter, not a compile-time constant,
+because a test that wants to force a slot straight back has to be able to turn
+it off -- which is how the wrap test above is possible at all.
+
+**Rejected:** widening to a 40-bit index and 24-bit generation. It removes the
+wrap entirely and doubles the handle to 8 bytes, which pushes `Order` past 32
+and out of four-per-cache-line. The measured peak was 13,843 live orders on the
+busiest of three symbols; 24 bits addresses 16.7 million.
+
+### The free list is intrusive without type punning
+
+The usual intrusive free list writes an index over the slot's raw storage, which
+is type punning and which UBSan is right to object to. Here the link lives in a
+field the slot cannot be using while it is free: an order in the free list is in
+no queue, so its forward queue link carries the free list link. Same field, same
+type, zero extra bytes, fully defined.
+
+`Level` cannot do this -- its queue links are in use whenever the level is -- so
+it carries a dedicated 4-byte link. It still lands on 32 bytes.
+
+### Prefaulting is about measurement, not speed
+
+Every page is written once at construction. Written, not read: a read of
+untouched anonymous memory can be served by the shared zero page and faults
+again on the first write.
+
+This is not a micro-optimisation. Without it, the first touch of each page
+during a replay is a multi-microsecond outlier, and those outliers land in
+exactly the percentile the project is meant to report honestly. Prefaulting
+keeps p99.9 a measurement of the book rather than of the page allocator.
+
 ---
 
 ## Open, to be settled by measurement

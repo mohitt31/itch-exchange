@@ -135,9 +135,8 @@ done
 | `asan-ubsan` | 1/1 suites, 19 tests, 0 failed |
 | `tsan` | 1/1 suites, 19 tests, 0 failed |
 
-After slice 3 (framing, sources, parser), 59 tests across 5 suites, passing
-under all four configurations, plus 451 `static_assert`s on message sizes and
-field offsets.
+After slice 6 (pools), 91 tests across 7 suites, passing under all four
+configurations, plus 451 `static_assert`s on message sizes and field offsets.
 
 | Suite | Tests |
 |---|---|
@@ -146,6 +145,8 @@ field offsets.
 | `test_framing` | 14 |
 | `test_parser` | 11 |
 | `test_gzip` | 6 |
+| `test_map_book` | 15 |
+| `test_pool` | 17 |
 
 The `tsan` result is **trivially clean**: the pipeline is single-threaded by
 design and the cut list forbids threading inside the book. The configuration is
