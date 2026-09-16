@@ -1,0 +1,14 @@
+power state      battery, low power mode off
+levels in window   1,277 (the measured QQQ peak) in every row
+lookups per round  20,000,000
+
+    overflow        window ns      overflow ns  slower by
+----------------------------------------------------------
+          64             0.90             4.30      4.79x
+         544             0.90             6.92      7.72x
+       4,096             0.89             8.21      9.20x
+      32,768             0.90            11.69     13.04x
+     262,144             0.89            15.44     17.28x
+
+544 is the measured overflow population for QQQ. The rows above and
+below it are there to show which path's cost depends on that number.

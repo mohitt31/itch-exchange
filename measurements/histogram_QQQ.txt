@@ -6,7 +6,7 @@ messages         364,470,659 total, 3,448,973 applied
   deletes        1,577,106
   replaces       189,321
   trades ignored 3,846
-elapsed          30.51 s
+elapsed          15.25 s
 
 1. distance from the inside, in pennies, at insertion
    measured       1,812,938 adds (2 had no inside yet)

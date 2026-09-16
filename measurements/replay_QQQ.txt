@@ -1,0 +1,11 @@
+book             flat
+symbol           QQQ
+messages seen    364,470,659
+book updates     3,448,973
+peak orders      7,679
+peak levels      2,137
+crossed states   0
+full validations 34
+elapsed          15.19 s
+digest           6344a2790a894bc5
+determinism      10 runs, all digests identical

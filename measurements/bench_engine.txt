@@ -1,0 +1,13 @@
+orders per round   400,000
+self-trade mode    cancel newest, 8 participants
+median of 5 rounds
+
+flow                   orders/s   ns/order          fills         rested
+------------------------------------------------------------------------
+0% aggressive        24,804,278       40.3              0        400,000
+5% aggressive        23,602,766       42.4         31,366        380,176
+25% aggressive       20,920,137       47.8        144,699        311,610
+60% aggressive       16,594,756       60.3        294,507        233,293
+
+fills and rested are for one round, so the cost of a row can be read
+against how much matching it actually did.

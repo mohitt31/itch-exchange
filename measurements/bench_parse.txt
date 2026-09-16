@@ -1,0 +1,13 @@
+power state      battery, low power mode off
+inflating up to 2,147,483,648 bytes of data/01302019.NASDAQ_ITCH50.gz into memory (not timed)
+2,147,483,615 bytes in memory
+69,718,789 messages
+
+median of 5 rounds, in-memory buffer, nothing else in the loop
+
+frame only            464,147,664 msg/s      14.30 GB/s
+frame + decode        218,675,589 msg/s       6.74 GB/s
+
+frame-only is the length-prefix walk with every message validated
+against the type table. frame+decode additionally reads every field
+a book builder uses, accumulated so it cannot be eliminated.

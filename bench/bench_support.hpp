@@ -212,11 +212,14 @@ private:
 
 // The machine's power state, printed above every result.
 //
-// This is not decoration. The same binary on the same input measured 59.5M
-// ops/s on mains power and 33.5M in Low Power Mode on battery -- a 44% drop
-// affecting all three book implementations almost equally, while their ratios
-// held. A throughput figure without this alongside it is not reproducible, and
-// the ratios are the part that survives.
+// This is not decoration. The same binary on the same input measured 65.7M
+// ops/s with Low Power Mode off and 33.5M with it on -- a 49% drop hitting all
+// three book implementations almost equally, while their ratios held.
+//
+// It is Low Power Mode specifically, not the power source. That was measured
+// too: battery with the mode off is slightly faster than the run originally
+// recorded as "mains", so the source is not the variable and this used to warn
+// about the wrong thing.
 struct PowerState {
     std::string source = "unknown";
     bool        low_power_mode = false;
@@ -261,11 +264,12 @@ inline void print_power_state() {
         std::printf("power state      unknown\n");
         return;
     }
-    std::printf("power state      %s%s\n", ps.source.c_str(),
-                ps.low_power_mode ? ", LOW POWER MODE ON" : "");
-    if (ps.low_power_mode || ps.source == "battery") {
-        std::printf("                 ^ absolute throughput here is NOT comparable to a\n");
-        std::printf("                   run on mains with low power mode off. Ratios are.\n");
+    std::printf("power state      %s, low power mode %s\n", ps.source.c_str(),
+                ps.low_power_mode ? "ON" : "off");
+    if (ps.low_power_mode) {
+        std::printf("                 ^ Low Power Mode roughly halves absolute throughput.\n");
+        std::printf("                   These numbers are NOT comparable to a run with it\n");
+        std::printf("                   off. The ratios between implementations are.\n");
     }
 }
 

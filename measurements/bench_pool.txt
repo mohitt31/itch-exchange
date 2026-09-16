@@ -1,0 +1,17 @@
+power state      battery, low power mode off
+cycles per round   4,000,000
+sizeof(Order)      32 bytes
+
+median of 5 interleaved rounds, one free + one allocate per cycle
+
+live objects      pool ns/cycle new+delete ns/cycle  pool wins
+--------------------------------------------------------------
+8,192                      4.63            29.17      6.30x
+65,536                     5.03            29.68      5.90x
+
+prefault check
+  minor faults during construction (prefault)  513
+  minor faults touching all 262,144 slots after     0
+
+the second number is the one that matters: zero means the hot path
+never takes a first-touch fault.

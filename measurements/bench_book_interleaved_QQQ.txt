@@ -1,0 +1,34 @@
+power state      battery, low power mode off
+machine          Apple M4, macOS, release
+timer resolution 41 ns (measured)
+clock read cost  6.79 ns (measured)
+
+loading workload for QQQ from data/01302019.NASDAQ_ITCH50.gz
+symbol           QQQ (locate 6449)
+operations       3,448,973
+  add 1,623,619  execute 55,963  cancel 2,964  delete 1,577,106  replace 189,321
+book digest      a0ed37f623c3aa3f (all three agree)
+
+throughput, closed loop, 7 INTERLEAVED rounds, one process
+equal conditions for the comparison, but every absolute here is
+depressed by the other two implementations sharing the caches.
+run with --only for an isolated absolute.
+
+               median ops/s      ns/op        slowest        fastest  vs Flat
+------------------------------------------------------------------------------
+FlatBook         64,247,972       15.6     64,118,427     64,646,172    1.00x
+AvlBook          30,586,565       32.7     30,477,775     30,629,982    2.10x
+MapBook          16,809,133       59.5     16,427,911     16,918,213    3.82x
+
+latency per operation, open loop at 8,404,566 ops/s, nanoseconds
+rate is 50% of the slowest implementation's saturation, so none is backed up
+timer floor is 41 ns; a value at or below it is not a measurement
+
+                    p50        p99      p99.9     p99.99        max       mean
+--------------------------------------------------------------------------------
+harness floor   <= floor   <= floor       5742       8779      13056       38.1
+FlatBook       <= floor       1034       6299       9093      12935       65.1
+AvlBook              51        174       6719       9128      12321       79.0
+MapBook              77       1580       8124      10047      11761      133.6
+
+the harness floor row is the same loop with no book operation in it.

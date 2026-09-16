@@ -1,0 +1,20 @@
+power state      battery, low power mode off
+one price level, all orders at the same price
+300 rebuild-and-cancel repetitions per cell, mean ns
+timer floor is 41 ns, so single-cancel numbers are quantised;
+what matters is whether the column moves, not its absolute value
+
+hash              depth         head          25%       middle         tail
+--------------------------------------------------------------------------
+identity             64         74.0         61.8         47.1         19.3
+splitmix64           64         21.5         21.1         20.7         17.5
+identity          1,024        802.4        522.9        331.3         19.0
+splitmix64        1,024         14.7         14.4         14.2         13.6
+identity         16,384       8804.6       6647.1       4419.2         17.9
+splitmix64       16,384         21.0         18.2         19.1         15.3
+identity        100,000      54983.9      41266.2      27359.4         21.3
+splitmix64      100,000         63.6         22.5         23.9         17.9
+
+unlinking from the queue is a fixed number of field writes. Anything
+that grows with depth here is not the queue -- it is the order index's
+backward-shift deletion walking a probe cluster.

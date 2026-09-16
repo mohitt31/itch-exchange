@@ -10,20 +10,25 @@ Where something has not been measured yet it says so.
 
 ## How to read the absolute numbers
 
-Every throughput figure here was measured on **mains power with Low Power Mode
-off**, and that is load-bearing. The same binary on the same input measured
-59,495,397 ops/s on mains and 33,545,534 in Low Power Mode on battery -- a 44%
-drop that hit all three book implementations almost equally:
+Every figure here was measured with **Low Power Mode off**, and that is
+load-bearing. The same binary on the same input:
 
-| | mains | battery, low power | ratio preserved |
+| | low power mode off | low power mode on | ratio preserved |
 |---|---|---|---|
-| FlatBook | 59,495,397 | 33,545,534 | -- |
-| AvlBook | 29,228,068 | 15,785,775 | 2.04x / 2.12x |
-| MapBook | 16,801,310 | 8,335,226 | 3.54x / 4.03x |
+| FlatBook | 64,702,920 | 33,545,534 | -- |
+| AvlBook | 30,705,814 | 15,785,775 | 2.11x / 2.12x |
+| MapBook | 16,973,716 | 8,335,226 | 3.81x / 4.03x |
 
-**The ratios survive; the absolutes do not.** Every benchmark now prints the
-power state above its result and says so when the state will depress the
-numbers. If a run here does not reproduce, check that line first.
+**A 48% drop, hitting all three almost equally. The ratios survive; the
+absolutes do not.**
+
+It is Low Power Mode specifically, **not** the power source. This file
+previously attributed the fast numbers to mains power. That was wrong and the
+measurement said so: battery with the mode off gives 64.7M, slightly *faster*
+than the run originally recorded as "mains". The source is not the variable.
+
+Every benchmark prints the power state above its own result and warns when Low
+Power Mode is on. If a number here does not reproduce, check that line first.
 
 ## Machines
 
@@ -264,28 +269,27 @@ Workload: QQQ's **3,448,973** real book operations over the complete session
 
 ### Throughput -- reliable
 
-**Each implementation measured alone in its own process.** Three invocations,
-order alternated. Spread under 1%.
+**Each implementation measured alone in its own process**, seven rounds.
 
-| | median ops/s | ns/op | invocations | vs FlatBook |
-|---|---|---|---|---|
-| **FlatBook** | **59,495,397** | **16.8** | 59.04M / 59.46M / 59.50M | 1.00x |
-| AvlBook | 29,228,068 | 34.2 | 29.18M / 29.25M / 29.23M | **2.04x** |
-| MapBook | 16,801,310 | 59.5 | 16.88M / 16.80M / 16.74M | **3.54x** |
+| | median ops/s | ns/op | slowest round | fastest round | vs FlatBook |
+|---|---|---|---|---|---|
+| **FlatBook** | **64,702,920** | **15.5** | 64,597,237 | 65,077,418 | 1.00x |
+| AvlBook | 30,705,814 | 32.6 | 30,670,430 | 30,731,794 | **2.11x** |
+| MapBook | 16,973,716 | 58.9 | 16,100,943 | 16,993,188 | **3.81x** |
 
 `AvlBook` differs from `FlatBook` in exactly one thing: the price-to-level
 structure. Same pools, same intrusive queues, same order index, an AVL tree over
-a node pool instead of the tick-indexed ladder. So **2.04x is what the ladder
+a node pool instead of the tick-indexed ladder. So **2.11x is what the ladder
 bought**. `MapBook` is the textbook implementation and changes everything at
-once, so **3.54x is what the whole design bought**.
+once, so **3.81x is what the whole design bought**.
 
 **Why isolated and not interleaved.** Running all three in one process,
 interleaved, gives each the same conditions -- but every absolute comes out
 roughly half of the isolated figure, because MapBook's allocations evict the
-other two's working sets between rounds. The ratios survive almost unchanged
-(2.03x and 3.76x interleaved), so the comparison was never wrong; the absolutes
-were. `bench_book` without `--only` still runs the interleaved mode, because
-that is where all three are required to produce the same book digest.
+other two's working sets between rounds. The ratios survive almost unchanged, so
+the comparison was never wrong; the absolutes were. `bench_book` without
+`--only` still runs the interleaved mode, because that is where all three are
+required to produce the same book digest.
 
 All three produce book digest `a0ed37f623c3aa3f`; the interleaved mode refuses
 to report if they disagree.
@@ -339,8 +343,8 @@ timed region.
 
 | | msg/s | GB/s |
 |---|---|---|
-| frame only | **449,108,798** | 13.83 |
-| frame + decode | **211,876,195** | 6.53 |
+| frame only | **464,147,664** | 14.30 |
+| frame + decode | **218,675,589** | 6.74 |
 
 "Frame only" walks the length prefixes and validates each against the type
 table. "Frame + decode" additionally reads every field a book builder uses, into
@@ -369,8 +373,8 @@ maintained live set. Interleaved rounds, median of 5.
 
 | live objects | pool ns/cycle | new + delete ns/cycle | pool wins by |
 |---|---|---|---|
-| 8,192 | **5.56** | 29.53 | **5.31x** |
-| 65,536 | **7.02** | 30.55 | **4.35x** |
+| 8,192 | **4.63** | 29.17 | **6.30x** |
+| 65,536 | **5.03** | 29.68 | **5.90x** |
 
 Two honest qualifications. The pool runs with generation checking **on**,
 because that is how it ships; the comparison is against a validating pool, not a
@@ -405,11 +409,11 @@ overflow population changes. 20,000,000 lookups per round.
 
 | overflow levels | window ns | overflow ns | fallback slower by |
 |---|---|---|---|
-| 64 | 0.90 | 4.36 | 4.84x |
-| **544** (measured QQQ) | **0.90** | **7.10** | **7.85x** |
-| 4,096 | 0.90 | 8.60 | 9.52x |
-| 32,768 | 0.90 | 12.48 | 13.84x |
-| 262,144 | 0.90 | 16.56 | 18.41x |
+| 64 | 0.90 | 4.30 | 4.79x |
+| **544** (measured QQQ) | **0.90** | **6.92** | **7.72x** |
+| 4,096 | 0.89 | 8.21 | 9.20x |
+| 32,768 | 0.90 | 11.69 | 13.04x |
+| 262,144 | 0.89 | 15.44 | 17.28x |
 
 **The window column does not move.** 0.90 ns regardless of how much is in the
 overflow map -- a bitset test and an array load, which is what O(1) means here.
@@ -436,16 +440,21 @@ Mean ns over 300 rebuild-and-cancel repetitions.
 
 | depth | head | 25% | middle | tail |
 |---|---|---|---|---|
-| 64 | 30.7 | 28.0 | 28.9 | 26.8 |
-| 1,024 | 16.1 | 14.4 | 12.8 | 10.8 |
-| 16,384 | 21.1 | 25.7 | 21.3 | 11.3 |
-| 100,000 | **26.0** | 19.2 | 17.1 | 14.9 |
+| 64 | 21.5 | 21.1 | 20.7 | 17.5 |
+| 1,024 | 14.7 | 14.4 | 14.2 | 13.6 |
+| 16,384 | 21.0 | 18.2 | 19.1 | 15.3 |
+| 100,000 | **63.6** | 22.5 | 23.9 | 17.9 |
 
 Flat in both depth and position, at 100,000 deep as at 64. That is the O(1)
 claim measured rather than asserted.
 
+The 63.6 ns in the bottom-left cell is the one value that moves, and it is a
+cold-cache effect rather than a walk: the head of a 100,000 deep queue was
+inserted 100,000 allocations ago and its record has been evicted. Four times the
+flat cost, not four thousand.
+
 The same benchmark under identity hashing is how the order index's unbounded
-deletion was found -- 54,878 ns to cancel from the head of a 100,000 deep level.
+deletion was found -- 54,984 ns to cancel from the head of a 100,000 deep level.
 DESIGN.md section 22 has the account.
 
 ## Order record size
@@ -539,14 +548,14 @@ A flow that never crosses measures the add path and calls it matching.
 
 | flow | orders/s | ns/order | fills | rested |
 |---|---|---|---|---|
-| 0% aggressive | 10,009,195 | 99.9 | **0** | 400,000 |
-| 5% | 9,280,850 | 107.7 | 31,366 | 380,176 |
-| 25% | 8,320,109 | 120.2 | 144,699 | 311,610 |
-| 60% | 6,730,862 | 148.6 | 294,507 | 233,293 |
+| 0% aggressive | 24,804,278 | 40.3 | **0** | 400,000 |
+| 5% | 23,602,766 | 42.4 | 31,366 | 380,176 |
+| 25% | 20,920,137 | 47.8 | 144,699 | 311,610 |
+| 60% | 16,594,756 | 60.3 | 294,507 | 233,293 |
 
-Measured on battery in Low Power Mode, so the absolutes are roughly half what
-mains would give; the shape is the result. The 0% row is the control: zero
-fills, every order rests.
+Monotonic: more matching, slower. The 0% row is the control -- zero fills, every
+order rests -- so it is the pure add path with the matching check on top, and
+60% aggression costs 50% more per order than that.
 
 Eight participants with self-trade prevention set to cancel-newest, so the STP
 check is in the measured path.
@@ -565,14 +574,29 @@ ITCH_ORDER_NAIVE_LAYOUT=1, same workload, nothing else changed
 **48 bytes to 32 with no field removed, for about 4% of the time.** The memory
 is the better half of that trade; see DESIGN.md section 24.
 
-## reproduce.sh on a clean checkout
+## reproduce.sh
 
-Verified: `git clone`, symlink the corpus, `./bench/reproduce.sh --rounds 3`.
-All nine stages completed, exit status 0, all four test configurations green,
-and the ten-run replay reported identical digests.
+Every number above comes from one run of `bench/reproduce.sh --rounds 7`,
+exit status 0, nine stages:
 
-The only thing the clean run did not exercise is the corpus download itself,
-which was symlinked rather than refetched.
+| stage | result |
+|---|---|
+| feed statistics | 368,366,634 messages, 0 malformed |
+| price distribution | QQQ, SPY, AMD |
+| three-way book, isolated | above |
+| three-way book, interleaved | digest `a0ed37f623c3aa3f`, all three agree |
+| parser | above |
+| order pool | above, 0 minor faults after prefault |
+| ladder paths | above |
+| cancel is O(1) | above |
+| matching engine | above |
+| deterministic replay | digest `6344a2790a894bc5`, **10 runs identical** |
+| tests, four configurations | 12/12 each |
+
+Also verified on a **clean checkout**: `git clone`, symlink the corpus,
+`./bench/reproduce.sh --rounds 3`. Nine stages, exit status 0, four
+configurations green, ten-run replay identical. The only step not exercised
+there is the corpus download, which was symlinked rather than refetched.
 
 ## Not measured yet
 
