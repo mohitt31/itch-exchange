@@ -85,6 +85,20 @@ private:
     std::uint64_t s_;
 };
 
+// Hides a value from the optimiser.
+//
+// Tests that deliberately pass an invalid handle or index mean a value that
+// arrives at runtime, not one the compiler can see. Left visible, GCC constant
+// folds it into the call site and then reports the out-of-bounds subscript that
+// the assertion under test exists to prevent -- a correct warning about a path
+// that cannot execute. This makes the value opaque, which is also a more honest
+// model of the bug being tested.
+template <class T>
+[[nodiscard]] T opaque(T v) {
+    asm volatile("" : "+r"(v));
+    return v;
+}
+
 // Value formatting for failure messages.
 template <class T>
 std::string to_str(const T& v) {

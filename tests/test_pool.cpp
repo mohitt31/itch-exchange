@@ -95,7 +95,7 @@ ITCH_TEST(pool_detects_use_after_free) {
 
     pool.free(h);
     ITCH_CHECK(!pool.is_live(h));
-    ITCH_REQUIRE_ASSERT(pool[h].ref = 1);
+    ITCH_REQUIRE_ASSERT(pool[itch::test::opaque(h)].ref = 1);
 }
 
 ITCH_TEST(pool_detects_double_free) {
@@ -107,13 +107,18 @@ ITCH_TEST(pool_detects_double_free) {
 
 ITCH_TEST(pool_detects_a_null_handle) {
     OrderPool pool{16};
-    ITCH_CHECK(!pool.is_live(OrderHandle{}));
-    ITCH_REQUIRE_ASSERT(pool[OrderHandle{}].ref = 1);
+    const auto null_handle = itch::test::opaque(OrderHandle{});
+    ITCH_CHECK(!pool.is_live(null_handle));
+    ITCH_REQUIRE_ASSERT(pool[null_handle].ref = 1);
 }
 
 ITCH_TEST(pool_detects_an_out_of_range_handle) {
     OrderPool pool{16};
-    const auto bad = OrderHandle::make(1000, 1);
+    // opaque(): the handle is meant to be an invalid one arriving at runtime.
+    // Visible to the optimiser it is a compile-time constant subscript past the
+    // end, which GCC reports as an out-of-bounds array access on a path the
+    // assertion stops.
+    const auto bad = itch::test::opaque(OrderHandle::make(1000, 1));
     ITCH_CHECK(!pool.is_live(bad));
     ITCH_REQUIRE_ASSERT(pool[bad].ref = 1);
 }
@@ -133,7 +138,7 @@ ITCH_TEST(pool_detects_a_handle_to_a_reused_slot) {
     ITCH_CHECK_NE(first.generation(), second.generation());
     ITCH_CHECK(!pool.is_live(first));
     ITCH_CHECK(pool.is_live(second));
-    ITCH_REQUIRE_ASSERT(pool[first].ref = 1);
+    ITCH_REQUIRE_ASSERT(pool[itch::test::opaque(first)].ref = 1);
     ITCH_CHECK_EQ(pool[second].ref, OrderRef{222});
 }
 
@@ -220,7 +225,7 @@ ITCH_TEST(pool_quarantine_makes_stale_handles_certain_to_be_caught) {
         pool.free(churn);
     }
     ITCH_CHECK(!pool.is_live(stale));
-    ITCH_REQUIRE_ASSERT(pool[stale].ref = 1);
+    ITCH_REQUIRE_ASSERT(pool[itch::test::opaque(stale)].ref = 1);
 }
 
 ITCH_TEST(pool_level_records_work_the_same_way) {
@@ -233,7 +238,7 @@ ITCH_TEST(pool_level_records_work_the_same_way) {
     ITCH_CHECK_EQ(pool[b].price, Price{100'0100});
     ITCH_CHECK_NE(a.index(), b.index());
     pool.free(a);
-    ITCH_REQUIRE_ASSERT(pool[a].price = 1);
+    ITCH_REQUIRE_ASSERT(pool[itch::test::opaque(a)].price = 1);
     ITCH_CHECK_EQ(pool[b].price, Price{100'0100});
     pool.validate();
 }
