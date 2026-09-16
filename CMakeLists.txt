@@ -32,15 +32,22 @@ target_compile_options(itch_warnings INTERFACE
 
 add_library(itch_arch INTERFACE)
 if(ITCH_NATIVE_ARCH)
-  check_cxx_compiler_flag("-mcpu=native" ITCH_HAVE_MCPU_NATIVE)
-  if(ITCH_HAVE_MCPU_NATIVE)
-    target_compile_options(itch_arch INTERFACE -mcpu=native)
+  # -mcpu on ARM, -march elsewhere. GCC accepts -mcpu=native on x86 as a
+  # deprecated alias, so probing -mcpu first would succeed and then warn on
+  # every translation unit.
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    set(ITCH_ARCH_FLAGS "-mcpu=native" "-march=native")
   else()
-    check_cxx_compiler_flag("-march=native" ITCH_HAVE_MARCH_NATIVE)
-    if(ITCH_HAVE_MARCH_NATIVE)
-      target_compile_options(itch_arch INTERFACE -march=native)
-    endif()
+    set(ITCH_ARCH_FLAGS "-march=native" "-mcpu=native")
   endif()
+  foreach(flag IN LISTS ITCH_ARCH_FLAGS)
+    string(MAKE_C_IDENTIFIER "ITCH_HAVE${flag}" flag_var)
+    check_cxx_compiler_flag("${flag}" ${flag_var})
+    if(${flag_var})
+      target_compile_options(itch_arch INTERFACE "${flag}")
+      break()
+    endif()
+  endforeach()
 endif()
 
 add_library(itch
