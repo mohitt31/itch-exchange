@@ -118,6 +118,18 @@ ctest --preset release-checked
 Presets are `release`, `release-checked`, `asan-ubsan` and `tsan`. ASan and TSan
 cannot coexist, hence the separate configurations.
 
+Before pushing:
+
+```sh
+./tools/check_gcc.sh                      # every TU under GCC at -O3, full warnings
+./tools/check_headers_selfcontained.sh    # every header compiles alone
+./tools/check_noexcept_asserts.sh         # no noexcept function contains an assertion
+./tools/check_no_float.sh                 # no floating point below apps/
+```
+
+CI runs all four configurations on macOS and Ubuntu, plus those checks and a
+regeneration diff of the wire headers.
+
 ## Design
 
 DESIGN.md carries the decisions: what was chosen, what was rejected, and why.

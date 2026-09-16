@@ -996,6 +996,82 @@ data said identity. Table sizing said it barely mattered. Only a benchmark
 written to test an unrelated claim about queue cancellation exposed a worst case
 that a latency-sensitive system cannot accept.
 
+## 23. What a second compiler found
+
+For most of this project only one compiler had ever built it: Apple Clang on
+arm64. The CI workflow existed from the first commit and had never actually run,
+because there was no remote. Pushing it found four things in three rounds, and
+none of them were style.
+
+### The one that was a real gap
+
+`ITCH_ASSERT` did not tell the optimiser anything.
+
+`assert_failed` was not marked `[[noreturn]]`, so a compiler must assume
+execution continues past a failed assertion and cannot treat the assertion as a
+fact. That became load-bearing when `deref_checked` dropped its explicit null
+check on the grounds that the bounds check subsumes it (section 20). Clang
+happened to follow that reasoning; GCC did not have to, and rejected
+`Pool::allocate` for indexing one past the end.
+
+`[[noreturn]]` is simply correct here -- the default handler aborts, the test
+handler throws, and both satisfy it. It was still not enough: GCC's value-range
+analysis lost the bound through an inlined `std::vector` allocation. `ITCH_ASSERT`
+now emits `__builtin_unreachable()` on the failure path as well.
+
+That hint is attached only to `ITCH_ASSERT`, which is compiled into every
+configuration, and the header says why in capitals: **it must never be attached
+to a check that can be compiled out.** Asserting a fact nobody verifies converts
+a violation from a caught bug into undefined behaviour, which is the opposite of
+what the three-level assertion scheme is for.
+
+A second gap fell out of the same investigation. `Pool::allocate` asserted
+`!free_head_.is_null()`, which tests the whole 32-bit pattern. A handle carrying
+`kNullIndex` with any other generation passes that and still indexes out of
+bounds. No such handle can be constructed -- `make()` asserts it -- but that is a
+whole-program argument, and asserting the index bound directly is both stronger
+and one compare either way.
+
+### The one that was a portability bug in the thing that matters most
+
+The pacer's spin hint was `isb`, which is arm64 only and does not assemble on
+x86-64. Every Ubuntu job failed to build.
+
+This is worse than it sounds. `bench_support.hpp` exists for the p99 and p99.9
+measurements that this project explicitly defers to a Linux box, and it would
+not have compiled there. The gap between "deferred to the Linux box" and "cannot
+be built on the Linux box" is the whole plan.
+
+### The two that were the compiler being right about the tests
+
+`test_ladder.cpp` used `std::reverse` without including `<algorithm>`. libc++
+supplies it transitively; libstdc++ does not.
+
+Three array-bounds errors all came from tests that pass an invalid handle on
+purpose -- `pool_detects_an_out_of_range_handle` hands a handle with index 1000
+to a sixteen-slot pool. Constant folded into the call site that is a
+compile-time subscript past the end, on a path the assertion exists to stop. The
+warning is correct; the test means a bad handle arriving at *runtime*.
+`test::opaque()` hides such values from the optimiser, which is also a more
+faithful model of the bug being tested.
+
+One genuine false positive remains in that family: GCC's array-bounds analysis
+does not model the reallocation in `vector::resize` and reports the zero fill of
+the new region as writing past the old end. `WireBuilder::begin` uses `insert`
+instead. Changing one call is a smaller price than suppressing a warning class
+across the project, and nothing is suppressed anywhere.
+
+### What changed in the workflow
+
+`tools/check_gcc.sh` compiles every translation unit with GCC at `-O3` under the
+full warning set. It runs in seconds.
+
+It is not sufficient on its own: local GCC 16 on arm64 did not reproduce the
+array-bounds errors that GCC 13 on x86-64 did. Two compilers is better than one,
+two versions on two architectures is better than that, and CI is the only place
+the second architecture exists. The lesson is narrower than "run CI": a workflow
+file that has never executed is not a check, it is an intention.
+
 ---
 
 ## Open, to be settled by measurement
