@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include <cstdio>
 #include <time.h>
 
 namespace itch::bench {
@@ -74,6 +75,30 @@ inline void do_not_optimize(const T& value) {
 }
 
 inline void clobber_memory() { asm volatile("" : : : "memory"); }
+
+// Deterministic generator for synthetic benchmark flows. Same splitmix64 as the
+// test harness, so a benchmark's workload reproduces exactly from its seed.
+class Rng {
+public:
+    explicit constexpr Rng(u64 seed) noexcept : s_(seed) {}
+
+    constexpr u64 next() noexcept {
+        u64 z = (s_ += 0x9e3779b97f4a7c15ULL);
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+        return z ^ (z >> 31);
+    }
+
+    constexpr u64 range(u64 lo, u64 hi) noexcept {
+        const u64 span = hi - lo + 1;
+        return lo + static_cast<u64>((static_cast<__uint128_t>(next()) * span) >> 64);
+    }
+
+    constexpr bool chance(u32 percent) noexcept { return range(0, 99) < percent; }
+
+private:
+    u64 s_;
+};
 
 // Exact percentiles: every sample is kept and sorted, so there is no bucketing
 // error anywhere in the distribution. At 10 million samples that is 40 MB, which
@@ -183,6 +208,65 @@ private:
         return 0.0;
     }
     return (n % 2 == 1) ? runs[n / 2] : 0.5 * (runs[n / 2 - 1] + runs[n / 2]);
+}
+
+// The machine's power state, printed above every result.
+//
+// This is not decoration. The same binary on the same input measured 59.5M
+// ops/s on mains power and 33.5M in Low Power Mode on battery -- a 44% drop
+// affecting all three book implementations almost equally, while their ratios
+// held. A throughput figure without this alongside it is not reproducible, and
+// the ratios are the part that survives.
+struct PowerState {
+    std::string source = "unknown";
+    bool        low_power_mode = false;
+    bool        known = false;
+};
+
+[[nodiscard]] inline std::string run_capture(const char* cmd) {
+    std::string out;
+    std::FILE*  f = ::popen(cmd, "r");
+    if (f == nullptr) {
+        return out;
+    }
+    char buf[256];
+    while (std::fgets(buf, sizeof(buf), f) != nullptr) {
+        out += buf;
+    }
+    ::pclose(f);
+    return out;
+}
+
+[[nodiscard]] inline PowerState power_state() {
+    PowerState ps;
+#if defined(__APPLE__)
+    const std::string batt = run_capture("pmset -g batt 2>/dev/null");
+    if (batt.find("'AC Power'") != std::string::npos) {
+        ps.source = "AC";
+        ps.known = true;
+    } else if (batt.find("'Battery Power'") != std::string::npos) {
+        ps.source = "battery";
+        ps.known = true;
+    }
+    const std::string mode = run_capture("pmset -g 2>/dev/null | grep lowpowermode");
+    ps.low_power_mode = mode.find(" 1") != std::string::npos;
+#endif
+    return ps;
+}
+
+// Prints it, and says plainly when the state will depress the numbers.
+inline void print_power_state() {
+    const PowerState ps = power_state();
+    if (!ps.known) {
+        std::printf("power state      unknown\n");
+        return;
+    }
+    std::printf("power state      %s%s\n", ps.source.c_str(),
+                ps.low_power_mode ? ", LOW POWER MODE ON" : "");
+    if (ps.low_power_mode || ps.source == "battery") {
+        std::printf("                 ^ absolute throughput here is NOT comparable to a\n");
+        std::printf("                   run on mains with low power mode off. Ratios are.\n");
+    }
 }
 
 inline std::string commas(u64 v) {

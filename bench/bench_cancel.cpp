@@ -50,6 +50,8 @@ double cancel_at(u32 depth, double where, int reps) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    print_power_state();
+
     int reps = 2000;
     if (argc > 2 && std::string(argv[1]) == "--reps") {
         reps = std::atoi(argv[2]);

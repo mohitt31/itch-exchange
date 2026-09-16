@@ -118,6 +118,8 @@ Res report(const char* name, std::vector<double> msg_rates, u64 msgs, u64 bytes)
 }  // namespace
 
 int main(int argc, char** argv) {
+    print_power_state();
+
     if (argc < 2) {
         std::fprintf(stderr, "usage: bench_parse [--runs N] <corpus.gz|corpus>\n");
         return 2;

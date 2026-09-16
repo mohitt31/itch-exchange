@@ -95,6 +95,8 @@ long minor_faults() {
 }  // namespace
 
 int main(int argc, char** argv) {
+    print_power_state();
+
     int runs = 5;
     if (argc > 2 && std::string(argv[1]) == "--runs") {
         runs = std::atoi(argv[2]);

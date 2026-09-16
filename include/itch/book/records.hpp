@@ -16,6 +16,13 @@ namespace itch::book {
 #define ITCH_ORDER_PAD_BYTES 0
 #endif
 
+// Lays Order out in the order the fields were first written down, rather than
+// the order that packs. Zero in every real build; a benchmark binary is
+// compiled with it to measure what the packing is worth. DESIGN.md section 24.
+#ifndef ITCH_ORDER_NAIVE_LAYOUT
+#define ITCH_ORDER_NAIVE_LAYOUT 0
+#endif
+
 // 32 bytes, and the reason is narrower than it first looked.
 //
 // The original rationale was two claims: a power of two, so turning an index
@@ -39,6 +46,28 @@ namespace itch::book {
 // reduce path needs it to erase from the order index, and the canonical digest
 // needs it to enumerate a level's queue in an implementation-independent way.
 // A parallel array would give back the 8 bytes it saved.
+#if ITCH_ORDER_NAIVE_LAYOUT
+// The fields in the order they were first listed while working out what an
+// order needs to carry: side, then identity, then the quantities, then the
+// links. Every 8- and 4-byte member lands after a smaller one and the compiler
+// inserts padding to realign it. 44 bytes of members, 48 after alignment.
+struct Order {
+    u8          side;
+    OrderRef    ref;     // 7 bytes of padding before this
+    u8          gen;
+    Qty         qty;     // 3 bytes of padding before this
+    u16         owner;
+    Price       price;   // 2 bytes of padding before this
+    OrderHandle prev;
+    OrderHandle next;
+    LevelHandle level;
+    u16         flags_unused;
+
+    [[nodiscard]] OrderHandle& pool_link() noexcept { return next; }
+    [[nodiscard]] u8& pool_generation() noexcept { return gen; }
+};
+static_assert(sizeof(Order) == 48, "the naive layout is 48 bytes");
+#else
 struct Order {
     OrderRef    ref;    //  0   8  the ITCH order reference number
     Qty         qty;    //  8   4  shares still resting
@@ -64,7 +93,7 @@ struct Order {
 };
 
 static_assert(sizeof(Order) == 32 + ITCH_ORDER_PAD_BYTES,
-              "Order must stay 32 bytes: four per cache line");
+              "Order must stay 32 bytes");
 static_assert(alignof(Order) == 8);
 static_assert(offsetof(Order, ref) == 0);
 static_assert(offsetof(Order, qty) == 8);
@@ -72,6 +101,7 @@ static_assert(offsetof(Order, price) == 12);
 static_assert(offsetof(Order, prev) == 16);
 static_assert(offsetof(Order, next) == 20);
 static_assert(offsetof(Order, level) == 24);
+#endif  // ITCH_ORDER_NAIVE_LAYOUT
 
 // 32 bytes as well. At peak measured depth (2,057 levels across both sides on
 // QQQ) the whole live level pool is 64 KiB and sits inside the P-core's 128 KiB

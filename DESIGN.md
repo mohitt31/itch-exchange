@@ -1072,6 +1072,108 @@ two versions on two architectures is better than that, and CI is the only place
 the second architecture exists. The lesson is narrower than "run CI": a workflow
 file that has never executed is not a check, it is an intention.
 
+## 24. Order field ordering, before and after
+
+`Order` carries nine members. In the order they were first written down while
+working out what an order needs -- side, then identity, then quantities, then
+links -- every 8- and 4-byte member lands after a smaller one and the compiler
+realigns it:
+
+```
+u8          side;            //  0   1
+                             //      7 bytes padding
+OrderRef    ref;             //  8   8
+u8          gen;             // 16   1
+                             //      3 bytes padding
+Qty         qty;             // 20   4
+u16         owner;           // 24   2
+                             //      2 bytes padding
+Price       price;           // 28   4
+OrderHandle prev, next;      // 32   8
+LevelHandle level;           // 40   4
+u16         flags_unused;    // 44   2
+                             // = 48 bytes, 12 of them padding
+```
+
+Sorted widest-first, nothing needs realigning and the small members fill the
+tail exactly:
+
+```
+OrderRef    ref;    //  0   8
+Qty         qty;    //  8   4
+Price       price;  // 12   4
+OrderHandle prev;   // 16   4
+OrderHandle next;   // 20   4
+LevelHandle level;  // 24   4
+u8          side;   // 28   1
+u8          gen;    // 29   1
+u16         owner;  // 30   2
+                    // = 32 bytes, 0 padding
+```
+
+**48 bytes to 32, a third smaller, with no field removed.**
+
+`ITCH_ORDER_NAIVE_LAYOUT` compiles the first form so the difference can be
+measured rather than assumed. Same workload, same harness, both layouts:
+
+| layout | sizeof | ops/s |
+|---|---|---|
+| packed | 32 | 33,395,512 / 33,774,746 |
+| naive | 48 | 31,999,192 / 32,419,044 |
+
+**About 4%.** Modest, and consistent with section 21: the win is not density,
+because nothing scans adjacent orders. It is that 48 is not a power of two, so
+indexing needs a multiply, and that a third less memory means a third fewer
+cache lines and TLB entries for the same live set.
+
+Worth stating plainly: a third of the memory for 4% of the time. The memory is
+the better half of that trade, and it is the half that does not depend on the
+access pattern staying what it is today.
+
+## 25. Matching engine: measured against how much it actually matches
+
+The engine's cost depends on how often an incoming order crosses and how deep it
+sweeps. A flow that never crosses measures the add path and calls it matching,
+so `bench_engine` parameterises aggression and **reports the fill count next to
+every throughput figure**. A number without that is not interpretable.
+
+| flow | orders/s | ns/order | fills | rested |
+|---|---|---|---|---|
+| 0% aggressive | 10,009,195 | 99.9 | **0** | 400,000 |
+| 5% | 9,280,850 | 107.7 | 31,366 | 380,176 |
+| 25% | 8,320,109 | 120.2 | 144,699 | 311,610 |
+| 60% | 6,730,862 | 148.6 | 294,507 | 233,293 |
+
+Monotonic, and the 0% row is the control: zero fills, every order rests, so it
+is the pure add path with the matching check on top.
+
+### The generator had to be built against a live book
+
+"Aggressive" means priced through the opposite touch, and the touch only exists
+once there is a book. The first version decided it from a precomputed drifting
+mid, and its **0% aggressive flow produced 289,108 fills** -- a bid placed when
+the mid was high crosses an offer placed after it fell. All four rows produced
+roughly the same fill count and the parameter controlled nothing.
+
+The flow is now built in an untimed first pass against a real book, taking each
+price from the actual touch at submission, and the timed pass replays the
+recorded prices. Same matching, no generator work inside the loop.
+
+This is the third time a drifting mid has produced a plausible wrong answer in
+this project -- the others were the synthetic determinism session and the ladder
+benchmark's far prices. A mid that moves independently of the book is not a
+market, and anything defined relative to it is defined relative to nothing.
+
+### And the dead-code guard fired on a correct case
+
+`run_once` accumulated filled quantity and exited if it stayed zero. The 0%
+aggressive flow trades nothing **by construction**, so the guard rejected a
+legitimate configuration. It now accumulates filled plus resting quantity: every
+order does one or the other, so it is non-zero for any flow that did work.
+
+A guard against measuring nothing has to be satisfiable by every configuration
+that legitimately does something, or it is just an assumption with an exit code.
+
 ---
 
 ## Open, to be settled by measurement

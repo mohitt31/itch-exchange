@@ -178,6 +178,8 @@ std::string floor_note(u32 value, u64 resolution) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    print_power_state();
+
     std::string corpus;
     std::string symbol = "QQQ";
     std::string only;

@@ -93,6 +93,10 @@ echo "### 7. cancel from the middle of a queue is O(1)"
 ./build/release/bench/bench_cancel --reps 300 | tee measurements/bench_cancel.txt
 
 echo
+echo "### 7b. matching engine, by how aggressive the flow is"
+./build/release/bench/bench_engine --runs 5 --orders 400000 | tee measurements/bench_engine.txt
+
+echo
 echo "### 8. deterministic replay, ten runs"
 ./build/release/apps/itch_replay --symbol "$SYMBOL" --runs 10 --validate-every 100000 \
   "$CORPUS" | tee "measurements/replay_${SYMBOL}.txt"
