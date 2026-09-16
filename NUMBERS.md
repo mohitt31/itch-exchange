@@ -598,6 +598,29 @@ Also verified on a **clean checkout**: `git clone`, symlink the corpus,
 configurations green, ten-run replay identical. The only step not exercised
 there is the corpus download, which was symlinked rather than refetched.
 
+## The Linux half
+
+```
+tools/linux_counters.sh data/01302019.NASDAQ_ITCH50.gz QQQ 7
+```
+
+Two measurements this machine cannot produce, packaged as one command so they
+are a matter of access rather than of work:
+
+1. **Counters** behind the 2.11x and 3.81x ratios. Those ratios are measured;
+   the mechanism is currently reasoned, not counted. This is the one place the
+   project claims more than it has shown.
+2. **p99 and p99.9** on an isolated core.
+
+The script reports whether `isolcpus` and `nohz_full` are actually in effect
+rather than assuming it, and warns that the tail is not quotable if they are
+not. It also re-runs the replay, whose digest must match the macOS one --
+a different answer on a different architecture would mean replay depends on
+something it should not.
+
+CI already builds and tests all four configurations on ubuntu-latest x86-64, so
+the code is known to work there; only the measurements are outstanding.
+
 ## Not measured yet
 
 Listed so that their absence is explicit rather than quiet.
