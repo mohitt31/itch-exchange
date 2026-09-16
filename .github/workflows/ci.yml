@@ -63,7 +63,9 @@ jobs:
         run: ./tools/check_headers_selfcontained.sh
       - name: No noexcept function contains an assertion
         run: ./tools/check_noexcept_asserts.sh
-      - name: Generated wire header is up to date
+      - name: Generated wire headers are up to date
         run: |
-          python3 tools/gen_wire.py tools/itch50_fields.json /tmp/messages.hpp
-          diff -u include/itch/wire/messages.hpp /tmp/messages.hpp
+          mkdir -p /tmp/gen
+          python3 tools/gen_wire.py tools/itch50_fields.json /tmp/gen
+          diff -u include/itch/wire/messages.hpp /tmp/gen/messages.hpp
+          diff -u include/itch/wire/views.hpp /tmp/gen/views.hpp

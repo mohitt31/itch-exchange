@@ -146,10 +146,25 @@ public:
 
     // Spins rather than sleeping: at these intervals any sleep would overshoot
     // by more than the thing being measured.
+    //
+    // The hint instruction is architecture specific. `isb` is arm64 only and
+    // will not assemble on x86-64, which matters because the tail latency work
+    // this harness exists for is Linux box work -- CI on ubuntu is what caught
+    // it, having never been run before.
     void wait_for(u64 deadline) const noexcept {
         while (now_ns() < deadline) {
-            asm volatile("isb" ::: "memory");
+            spin_hint();
         }
+    }
+
+    static void spin_hint() noexcept {
+#if defined(__aarch64__)
+        asm volatile("isb" ::: "memory");
+#elif defined(__x86_64__) || defined(__i386__)
+        asm volatile("pause" ::: "memory");
+#else
+        asm volatile("" ::: "memory");
+#endif
     }
 
     [[nodiscard]] u64 interval_ns() const noexcept { return interval_ns_; }
