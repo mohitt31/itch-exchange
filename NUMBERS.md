@@ -8,6 +8,23 @@ Where something has not been measured yet it says so.
 
 ---
 
+## How to read the absolute numbers
+
+Every throughput figure here was measured on **mains power with Low Power Mode
+off**, and that is load-bearing. The same binary on the same input measured
+59,495,397 ops/s on mains and 33,545,534 in Low Power Mode on battery -- a 44%
+drop that hit all three book implementations almost equally:
+
+| | mains | battery, low power | ratio preserved |
+|---|---|---|---|
+| FlatBook | 59,495,397 | 33,545,534 | -- |
+| AvlBook | 29,228,068 | 15,785,775 | 2.04x / 2.12x |
+| MapBook | 16,801,310 | 8,335,226 | 3.54x / 4.03x |
+
+**The ratios survive; the absolutes do not.** Every benchmark now prints the
+power state above its result and says so when the state will depress the
+numbers. If a run here does not reproduce, check that line first.
+
 ## Machines
 
 ### M4 (primary)
@@ -509,6 +526,53 @@ A third change was tried and **reverted**: slimming the assertion call sites to
 let `deref_checked` inline showed 4.5% on one run, then overlapping ranges over
 three more runs of each version, with the same out-of-line symbol count either
 way. It was noise, and is recorded as noise rather than kept with a number.
+
+## Matching engine
+
+```
+./build/release/bench/bench_engine --runs 5 --orders 400000
+```
+
+The engine's cost depends on how much matching it does, so aggression is a
+parameter and the **fill count is reported next to every throughput figure**.
+A flow that never crosses measures the add path and calls it matching.
+
+| flow | orders/s | ns/order | fills | rested |
+|---|---|---|---|---|
+| 0% aggressive | 10,009,195 | 99.9 | **0** | 400,000 |
+| 5% | 9,280,850 | 107.7 | 31,366 | 380,176 |
+| 25% | 8,320,109 | 120.2 | 144,699 | 311,610 |
+| 60% | 6,730,862 | 148.6 | 294,507 | 233,293 |
+
+Measured on battery in Low Power Mode, so the absolutes are roughly half what
+mains would give; the shape is the result. The 0% row is the control: zero
+fills, every order rests.
+
+Eight participants with self-trade prevention set to cancel-newest, so the STP
+check is in the measured path.
+
+## Order field ordering
+
+```
+ITCH_ORDER_NAIVE_LAYOUT=1, same workload, nothing else changed
+```
+
+| layout | sizeof(Order) | padding | ops/s |
+|---|---|---|---|
+| packed (widest first) | **32** | 0 | 33,395,512 / 33,774,746 |
+| naive (as first written) | 48 | 12 bytes | 31,999,192 / 32,419,044 |
+
+**48 bytes to 32 with no field removed, for about 4% of the time.** The memory
+is the better half of that trade; see DESIGN.md section 24.
+
+## reproduce.sh on a clean checkout
+
+Verified: `git clone`, symlink the corpus, `./bench/reproduce.sh --rounds 3`.
+All nine stages completed, exit status 0, all four test configurations green,
+and the ten-run replay reported identical digests.
+
+The only thing the clean run did not exercise is the corpus download itself,
+which was symlinked rather than refetched.
 
 ## Not measured yet
 

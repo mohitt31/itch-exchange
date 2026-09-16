@@ -20,9 +20,15 @@ measured and what has not.
 
 ## Results
 
-Apple M4, against **3,448,973 real QQQ book operations** from a complete NASDAQ
-session. Every number here has a command in NUMBERS.md; `bench/reproduce.sh`
-regenerates all of them.
+Apple M4 **on mains power with Low Power Mode off**, against **3,448,973 real
+QQQ book operations** from a complete NASDAQ session. Every number here has a
+command in NUMBERS.md; `bench/reproduce.sh` regenerates all of them, and has
+been verified end to end on a clean checkout.
+
+The power state matters: the same binary in Low Power Mode on battery measures
+33.5M rather than 59.5M, a 44% drop that hits all three implementations almost
+equally and leaves the ratios intact. Every benchmark prints the power state
+above its result.
 
 ### Book updates
 
@@ -56,6 +62,7 @@ In-memory buffer, so the GB/s is memory bandwidth, not disk.
 | pool allocate + free | 5.56 ns, **5.31x** faster than `new`/`delete` |
 | page faults on the hot path after prefault | **0** |
 | cancel from the middle of a 100,000-deep queue | 17 ns, same as at depth 64 |
+| matching engine, 25% of orders crossing | 8.3M orders/s, 144,699 fills |
 
 ### There is no p99 figure here, on purpose
 
