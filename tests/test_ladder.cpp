@@ -6,6 +6,7 @@
 // levels in both directions to keep that true. A map has no such invariant to
 // break, so any disagreement is the ladder's.
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>

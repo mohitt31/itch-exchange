@@ -72,9 +72,16 @@ public:
     }
 
     [[nodiscard]] HandleType allocate() {
-        ITCH_ASSERT_MSG(!free_head_.is_null(), "order pool exhausted");
+        // Asserts on the index rather than on is_null(), which is both stronger
+        // and the condition that actually matters. is_null() tests the whole
+        // 32-bit pattern, so a handle carrying kNullIndex with some other
+        // generation passes it and then indexes out of bounds. No such handle
+        // can be constructed -- make() asserts index < kMaxCapacity -- but that
+        // is a whole-program argument, and GCC rejected the build rather than
+        // take it. A bounds test is one compare either way.
         const u32 index = free_head_.index();
-        T&        slot = slots_[index];
+        ITCH_ASSERT_MSG(index < slots_.size(), "order pool exhausted");
+        T& slot = slots_[index];
         free_head_ = slot.pool_link();
 
         // Odd generation means live. Incrementing on both allocate and free is

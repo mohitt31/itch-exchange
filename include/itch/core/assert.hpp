@@ -50,10 +50,30 @@ AssertHandler set_assert_handler(AssertHandler handler);
     ::itch::detail::assert_failed(                                                 \
         ::itch::detail::AssertInfo{__FILE__, __LINE__, __func__, expr_str, msg_ptr})
 
+
+// Tells the optimiser what a passed assertion guarantees.
+//
+// assert_failed is already [[noreturn]], so this is redundant in principle. In
+// practice GCC's value-range analysis did not carry the fact through an inlined
+// std::vector allocation and rejected Pool::allocate for indexing one past the
+// end of a pool -- a bound the assertion on the line above had just
+// established.
+//
+// It is attached only to ITCH_ASSERT, which is compiled into every
+// configuration. It must never be attached to a check that can be compiled out:
+// asserting a fact nobody verifies turns a violation into undefined behaviour
+// instead of a caught bug.
+#if defined(__GNUC__) || defined(__clang__)
+#  define ITCH_DETAIL_UNREACHABLE() __builtin_unreachable()
+#else
+#  define ITCH_DETAIL_UNREACHABLE() ((void)0)
+#endif
+
 #define ITCH_ASSERT(expr)                                      \
     do {                                                       \
         if (!(expr)) [[unlikely]] {                            \
             ITCH_DETAIL_FAIL(#expr, nullptr);                  \
+            ITCH_DETAIL_UNREACHABLE();                         \
         }                                                      \
     } while (0)
 
@@ -61,6 +81,7 @@ AssertHandler set_assert_handler(AssertHandler handler);
     do {                                                       \
         if (!(expr)) [[unlikely]] {                            \
             ITCH_DETAIL_FAIL(#expr, msg);                      \
+            ITCH_DETAIL_UNREACHABLE();                         \
         }                                                      \
     } while (0)
 

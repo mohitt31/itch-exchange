@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "itch/core/assert.hpp"
 #include "itch/core/endian.hpp"
 #include "itch/wire/framing.hpp"
 #include "itch/wire/messages.hpp"
@@ -24,8 +25,12 @@ public:
     // the offset of its body so the caller can write fields into it.
     std::size_t begin(char type) {
         const std::size_t len = itch::wire::message_length(type);
+        ITCH_ASSERT_MSG(len > 0, "cannot build a message of an unknown type");
         const std::size_t at = buf_.size();
-        buf_.resize(at + itch::wire::kLengthPrefixSize + len, std::byte{0});
+        // insert rather than resize: GCC's array-bounds analysis does not model
+        // the reallocation in vector::resize here and reports the zero fill of
+        // the new region as writing past the old end.
+        buf_.insert(buf_.end(), itch::wire::kLengthPrefixSize + len, std::byte{0});
         itch::store_be<itch::u16>(buf_.data() + at, static_cast<itch::u16>(len));
         const std::size_t body = at + itch::wire::kLengthPrefixSize;
         buf_[body] = static_cast<std::byte>(type);
