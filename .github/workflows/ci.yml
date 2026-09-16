@@ -33,6 +33,26 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
 
+      # A9: the ten-run determinism claim is asserted here, not checked by hand.
+      # test_determinism replays a synthetic session ten times, through all
+      # three book implementations, at four validation intervals, and requires
+      # one digest. It runs as part of ctest above; this re-runs it alone so a
+      # failure is unambiguous in the log rather than one line among twelve.
+      - name: Determinism
+        run: ./build/${{ matrix.preset }}/tests/test_determinism
+
+  benchmarks-build:
+    # The benchmarks are part of the project, so they have to keep compiling.
+    # They are not run here: a shared CI runner cannot produce a number worth
+    # having, and publishing one would undercut everything NUMBERS.md says about
+    # measurement conditions.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install ninja
+      - run: cmake --preset release
+      - run: cmake --build --preset release
+
   source-checks:
     runs-on: ubuntu-latest
     steps:

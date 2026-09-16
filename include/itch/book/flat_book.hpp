@@ -38,12 +38,16 @@ public:
     // generously because the pools are prefaulted once and never grow.
     static constexpr u32 kDefaultOrders = 1u << 18;  // 262,144
     static constexpr u32 kDefaultLevels = 1u << 15;  // 32,768
-    // Measured, not chosen. The order index has an optimum and both sides of it
-    // are worse: below about 10% load factor the probe chains are short but the
-    // table no longer fits comfortably in cache, and above about 20% the chains
-    // start costing more than the cache does. The sweep is in NUMBERS.md; on
-    // this workload 131,072 entries beats the 524,288 this used to default to
-    // by 1.30x, and beats 16,384 by 1.43x.
+    // Measured, not chosen. The order index has a throughput optimum near an 8%
+    // load factor and both sides of it are worse: below it the table stops
+    // fitting in cache, above it the probe chains cost more than the cache
+    // does. The sweeps are in NUMBERS.md.
+    //
+    // This default suits a symbol peaking around 11,000 live orders, which
+    // covers QQQ (7,679), SPY (2,985) and AMD (15,286). A heavier name needs
+    // more: AAPL peaks at 42,774 and runs 19% faster with 524,288 entries than
+    // with this default. Callers that know their symbol should pass
+    // index_entries_for(peak) rather than take this.
     static constexpr u32 kDefaultIndex = 1u << 16;   // -> 131,072 entries, 2 MiB
 
     // index_capacity is separate from order_capacity on purpose: see DESIGN.md
@@ -405,8 +409,10 @@ private:
 using FlatBook = BookT<PriceLadder, IndexHash::Mixed>;
 using AvlBook = BookT<AvlLevelMap, IndexHash::Mixed>;
 
-// Same structure, identity hashing instead of splitmix64, for the index
-// benchmark.
+// Identity hashing, kept only so the comparison in DESIGN.md section 22 stays
+// runnable. It is faster in steady state and has an unbounded delete; nothing
+// ships with it.
 using FlatBookIdentity = BookT<PriceLadder, IndexHash::Identity>;
+using FlatBookMixed = FlatBook;
 
 }  // namespace itch::book

@@ -7,11 +7,23 @@
 // a 128-byte M4 cache line and a probe that misses usually stays on that line.
 //
 // The hash is a template parameter because NASDAQ order references are
-// near-sequential, which makes identity hashing genuinely plausible here:
-// sequential keys under linear probing fill the table in order and probe
-// perfectly. It is also exactly the kind of thing that is obvious right up
-// until it is wrong, so both are built and benchmarked rather than argued
-// about. The number is in NUMBERS.md.
+// near-sequential, which makes identity hashing plausible here. Both were
+// built, both were measured, and the measurement reversed the obvious answer.
+// The full account is DESIGN.md section 22.
+//
+// Identity is faster in steady state -- 3% to 8% on real workloads, despite
+// doing three to four times more probes, because sequential keys land in
+// adjacent slots and a probe chain walks forward inside a cache line already
+// paid for.
+//
+// It is also catastrophic on deletion. Sequential keys form one unbroken probe
+// cluster, and backward-shift deletion has to walk that cluster from the erased
+// slot to the next empty one. Erasing from the front of a 100,000 key cluster
+// took 54,615 ns against splitmix64's 13 ns, and it grows without bound.
+//
+// Deletes are 43% of this feed. splitmix64 is the default: a few percent of
+// throughput is not worth an unbounded tail on the second most common
+// operation in the system.
 //
 // Sized and prefaulted at construction. A rehash during replay is an assertion,
 // not a resize: growing the table mid-run would move every entry and put a
@@ -34,6 +46,18 @@ enum class IndexHash {
     Mixed,     // splitmix64 finaliser
 };
 
+// Entries the index should hold for a given peak live order count.
+//
+// Measured, not chosen: the throughput optimum sits near an 8% load factor, and
+// it is an optimum -- below it the table stops fitting in cache, above it the
+// probe chains cost more than the cache does. Confirmed independently on a
+// symbol peaking at 7,679 live orders and one peaking at 42,774.
+[[nodiscard]] constexpr u32 index_entries_for(u32 peak_live_orders) noexcept {
+    // 12x peak, rounded up to a power of two, lands between 6% and 12%.
+    const u32 want = peak_live_orders < 512 ? 512u : peak_live_orders * 12;
+    return std::bit_ceil(want);
+}
+
 template <IndexHash H = IndexHash::Mixed>
 class OrderIndex {
 public:
@@ -44,8 +68,10 @@ public:
     };
     static_assert(sizeof(Entry) == 16, "eight entries per M4 cache line");
 
-    // capacity_hint is the number of live orders to plan for; the table is
-    // sized to at least twice that, rounded up to a power of two.
+    // capacity_hint is the number of live orders to plan for. Prefer
+    // index_entries_for() at the call site, which encodes the measured optimum;
+    // this constructor keeps the 2x floor only so a hint can never produce a
+    // table too small to hold what it was asked for.
     explicit OrderIndex(u32 capacity_hint) {
         const u32 want = std::bit_ceil(capacity_hint < 8 ? u32{16} : capacity_hint * 2);
         slots_.assign(want, Entry{0, OrderHandle{}, 0});
@@ -110,6 +136,13 @@ public:
     [[nodiscard]] u64 probes() const noexcept { return probes_; }
     [[nodiscard]] u64 inserts() const noexcept { return inserts_; }
 
+    // Entries moved by backward-shift deletion. Counted separately from probes
+    // because it is a different cost with a different worst case, and because
+    // leaving it out of the probe counter is how identity hashing's unbounded
+    // deletion went unnoticed while its probes/op looked fine.
+    [[nodiscard]] u64 shifts() const noexcept { return shifts_; }
+    [[nodiscard]] u64 longest_shift() const noexcept { return longest_shift_; }
+
     // Deliberately returns the two counters rather than their ratio: the
     // no-floating-point rule applies below apps/, and a diagnostic accessor is
     // not a good enough reason to put a double here. Callers that want an
@@ -140,12 +173,15 @@ private:
     // tombstone is needed and no probe chain is broken.
     void erase_at(std::size_t i) {
         std::size_t j = i;
+        u64         moved = 0;
         for (;;) {
             slots_[i].handle = OrderHandle{};
             std::size_t k = 0;
             for (;;) {
                 j = (j + 1) & mask_;
                 if (slots_[j].handle.is_null()) {
+                    shifts_ += moved;
+                    longest_shift_ = (moved > longest_shift_) ? moved : longest_shift_;
                     return;
                 }
                 k = hash(slots_[j].ref) & mask_;
@@ -158,6 +194,7 @@ private:
             }
             slots_[i] = slots_[j];
             i = j;
+            ++moved;
         }
     }
 
@@ -175,6 +212,8 @@ private:
     u32                live_ = 0;
     mutable u64        probes_ = 0;
     u64                inserts_ = 0;
+    u64                shifts_ = 0;
+    u64                longest_shift_ = 0;
 };
 
 }  // namespace itch::book

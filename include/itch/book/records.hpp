@@ -8,17 +8,37 @@
 
 namespace itch::book {
 
-// 32 bytes, deliberately.
+// Unused bytes appended to Order, for the density experiment in DESIGN.md
+// section 21. Zero in every real build; a benchmark binary is compiled with a
+// non-zero value to measure what four-per-cache-line is actually worth, with
+// every other variable held fixed.
+#ifndef ITCH_ORDER_PAD_BYTES
+#define ITCH_ORDER_PAD_BYTES 0
+#endif
+
+// 32 bytes, and the reason is narrower than it first looked.
 //
-// Four per 128-byte M4 cache line, and a power of two so that turning an index
-// into an address is a shift rather than a multiply. 24 bytes would fit five
-// per line but costs that multiply on every single access, and 40 would drop to
-// three per line.
+// The original rationale was two claims: a power of two, so turning an index
+// into an address is a shift rather than a multiply; and four per 128-byte M4
+// cache line. Both were measured (DESIGN.md section 21) and only the first
+// survived.
 //
-// `ref` could be dropped to reach 24, since the order index already keys on it.
-// It stays because it makes "this execution matched an order that existed"
-// checkable against the message itself, and because of the shift. Both the
-// 32-byte and 24-byte shapes are benchmarked; the number is in NUMBERS.md.
+//   32 -> 59,447,200 ops/s      40 -> 56,587,736
+//   64 -> 59,041,960            56 -> 57,262,185
+//
+// Power-of-two sizes beat non-power-of-two by 2-4%: that is the shift. But 64
+// bytes, at two per cache line instead of four, is as fast as 32. Density does
+// not help here because the access pattern is a random single-record lookup
+// through a handle, never a scan of adjacent orders -- so a second order on the
+// same line is one that will never be read.
+//
+// 32 is kept because it is a power of two and it is small. The cache-line
+// argument was wrong and is recorded as wrong.
+//
+// `ref` could in principle be dropped to reach 24, but it is load-bearing: the
+// reduce path needs it to erase from the order index, and the canonical digest
+// needs it to enumerate a level's queue in an implementation-independent way.
+// A parallel array would give back the 8 bytes it saved.
 struct Order {
     OrderRef    ref;    //  0   8  the ITCH order reference number
     Qty         qty;    //  8   4  shares still resting
@@ -33,6 +53,9 @@ struct Order {
                         //         matching engine uses it for self-trade
                         //         prevention, at no cost in size: this field
                         //         was padding either way.
+#if ITCH_ORDER_PAD_BYTES > 0
+    u8 experiment_pad[ITCH_ORDER_PAD_BYTES];
+#endif
 
     // While an order sits in the free list it is in no queue, so the forward
     // queue link carries the free list link. Same field, same type, no punning.
@@ -40,7 +63,8 @@ struct Order {
     [[nodiscard]] u8& pool_generation() noexcept { return gen; }
 };
 
-static_assert(sizeof(Order) == 32, "Order must stay 32 bytes: four per cache line");
+static_assert(sizeof(Order) == 32 + ITCH_ORDER_PAD_BYTES,
+              "Order must stay 32 bytes: four per cache line");
 static_assert(alignof(Order) == 8);
 static_assert(offsetof(Order, ref) == 0);
 static_assert(offsetof(Order, qty) == 8);

@@ -234,43 +234,50 @@ is what sizes the order index.
 ## Three-way book benchmark
 
 ```
-./build/release/bench/bench_book --symbol QQQ --runs 7 data/01302019.NASDAQ_ITCH50.gz
+./build/release/bench/bench_book --only flat --symbol QQQ --runs 5 data/01302019.NASDAQ_ITCH50.gz
+./build/release/bench/bench_book --only avl  --symbol QQQ --runs 5 data/01302019.NASDAQ_ITCH50.gz
+./build/release/bench/bench_book --only map  --symbol QQQ --runs 5 data/01302019.NASDAQ_ITCH50.gz
 ```
 
 Machine: Apple M4, macOS 26.5, Apple clang 21.0.0.
-Build: `release` preset, `-O3 -DNDEBUG -mcpu=native` (resolves to `-mcpu=apple-m4`),
-`ITCH_INVARIANT_LEVEL=0`.
+Build: `release` preset, `-O3 -DNDEBUG -mcpu=native`, `ITCH_INVARIANT_LEVEL=0`.
 Workload: QQQ's **3,448,973** real book operations over the complete session
 (1,623,619 adds, 1,577,106 deletes, 189,321 replaces, 55,963 executions,
 2,964 cancels).
-All three implementations produce book digest `a0ed37f623c3aa3f`; the benchmark
-refuses to report if they disagree.
 
 ### Throughput -- reliable
 
-Closed loop, seven rounds, **interleaved** between implementations. Four separate
-process invocations gave FlatBook 30,732,330 / 30,519,116 / 30,817,216 /
-30,820,830 ops/s -- about 1% spread.
+**Each implementation measured alone in its own process.** Three invocations,
+order alternated. Spread under 1%.
 
-| | median ops/s | ns/op | slowest round | fastest round | vs FlatBook |
-|---|---|---|---|---|---|
-| **FlatBook** | **30,732,330** | **32.5** | 30,324,063 | 30,894,187 | 1.00x |
-| AvlBook | 15,130,586 | 66.1 | 15,021,435 | 15,166,262 | **2.03x** |
-| MapBook | 8,175,191 | 122.3 | 8,058,407 | 8,309,904 | **3.76x** |
+| | median ops/s | ns/op | invocations | vs FlatBook |
+|---|---|---|---|---|
+| **FlatBook** | **59,495,397** | **16.8** | 59.04M / 59.46M / 59.50M | 1.00x |
+| AvlBook | 29,228,068 | 34.2 | 29.18M / 29.25M / 29.23M | **2.04x** |
+| MapBook | 16,801,310 | 59.5 | 16.88M / 16.80M / 16.74M | **3.54x** |
 
 `AvlBook` differs from `FlatBook` in exactly one thing: the price-to-level
 structure. Same pools, same intrusive queues, same order index, an AVL tree over
-a node pool instead of the tick-indexed ladder. So **2.03x is what the ladder
+a node pool instead of the tick-indexed ladder. So **2.04x is what the ladder
 bought**. `MapBook` is the textbook implementation and changes everything at
-once, so **3.76x is what the whole design bought**.
+once, so **3.54x is what the whole design bought**.
+
+**Why isolated and not interleaved.** Running all three in one process,
+interleaved, gives each the same conditions -- but every absolute comes out
+roughly half of the isolated figure, because MapBook's allocations evict the
+other two's working sets between rounds. The ratios survive almost unchanged
+(2.03x and 3.76x interleaved), so the comparison was never wrong; the absolutes
+were. `bench_book` without `--only` still runs the interleaved mode, because
+that is where all three are required to produce the same book digest.
+
+All three produce book digest `a0ed37f623c3aa3f`; the interleaved mode refuses
+to report if they disagree.
 
 ### Latency p50 -- reliable, with its range
 
-Open loop at 4,087,595 ops/s (50% of the slowest implementation's saturation, so
-none is backed up). Measured timer floor is 41 ns and a clock read costs about
-15 ns, both reported by the benchmark at startup.
-
-Across four separate invocations:
+Open loop at 50% of the slowest implementation's saturation, so none is backed
+up. Measured timer floor 41 ns, clock read about 15 ns, both reported by the
+benchmark at startup. Across four invocations:
 
 | | observed p50 (ns) | typical |
 |---|---|---|
@@ -279,12 +286,12 @@ Across four separate invocations:
 | AvlBook | 103, 106, 104, 123 | **~105** |
 | MapBook | 160, 155, 159, 154 | **~156** |
 
-Well clear of the timer floor, and the ratios agree with the throughput ratios.
+p50 (~70 ns) is four times the throughput figure (16.8 ns/op) and both are
+correct: the throughput number is amortised across a pipelined loop, while the
+latency number contains a 15 ns clock read and is quantised to 41 ns. The true
+per-operation cost is nearer the throughput figure; p50 is an upper bound on it.
 
 ### Latency p99 and beyond -- NOT reliable on this machine, with proof
-
-The benchmark runs the identical pacing loop with **no book operation in it** and
-reports it as a "harness floor" row.
 
 FlatBook's p99, same binary, same input, four consecutive invocations:
 
@@ -295,28 +302,176 @@ FlatBook's p99, same binary, same input, four consecutive invocations:
 | 3 | 168 ns |
 | 4 | **5,500,354 ns** |
 
-**A 30,000x range for the same code on the same data.** In other runs the
-*empty* loop's own p99 was 454 ns against 70-85 ns elsewhere, and its p99.9
-reached 13,535 ns -- above FlatBook's 9,421 ns in the same run.
+**A 30,000x range for the same code on the same data**, while throughput over
+the same runs varied by 1%. In other runs the *empty* pacing loop's own p99 was
+454 ns against 70-85 ns elsewhere.
 
-macOS has no `isolcpus`, no `nohz_full`, and no way to pin a thread to a core.
-The benchmark requests `QOS_CLASS_USER_INTERACTIVE`, which is as close as this
-machine gets and is not close enough.
+macOS has no `isolcpus`, no `nohz_full` and no way to pin a thread to a core.
+**No p99 or p99.9 figure is quoted from this machine anywhere in this project.**
 
-**So no p99 or p99.9 figure is quoted from this machine anywhere in this
-project.** The tail belongs on a box with core isolation. Until that runs, the
-number does not exist. The figures above are recorded as evidence for why, not
-as results.
+## Parser, on its own
 
-## Profiling: before and after
+```
+./build/release/bench/bench_parse --runs 5 data/01302019.NASDAQ_ITCH50.gz
+```
 
-Two bottlenecks found and fixed. Reasoning in DESIGN.md section 20.
+2,147,483,615 bytes inflated into memory before timing (the full session is
+10.5 GB, which does not belong in RAM on a 16 GB machine), trimmed to a frame
+boundary. **69,718,789 messages.** No file read and no decompressor in the
+timed region.
 
-### Order index sizing
+| | msg/s | GB/s |
+|---|---|---|
+| frame only | **449,108,798** | 13.83 |
+| frame + decode | **211,876,195** | 6.53 |
 
-The index was sized from the order pool's capacity, giving a 524,288-entry,
-8 MiB table holding under 7,000 live entries. A sweep with the sizes
-**interleaved** so warm-up drift could not land on one of them:
+"Frame only" walks the length prefixes and validates each against the type
+table. "Frame + decode" additionally reads every field a book builder uses, into
+an accumulator the benchmark checks is non-zero.
+
+Sanity check, because 449 M msg/s is near the range where a parser benchmark is
+usually measuring nothing: the buffer averages 30.8 bytes per message, so
+13.83 GB/s is **memory bandwidth on an in-memory buffer, not disk** -- no SSD is
+involved. At roughly 4 GHz that is about 9 cycles per message for a 2-byte
+big-endian load, a byteswap, three compares and a pointer advance, and about 19
+cycles with five fields decoded. Both are plausible for a loop with a
+well-predicted branch, and the message count is derived from a separate counting
+pass over the same buffer.
+
+For contrast, `itch_stats` reports 14.4 M msg/s over the gzip corpus. The
+difference between that and 449 M is almost entirely inflate.
+
+## Order pool
+
+```
+./build/release/bench/bench_pool --runs 5
+```
+
+One free plus one allocate per cycle, 4,000,000 cycles per round, against a
+maintained live set. Interleaved rounds, median of 5.
+
+| live objects | pool ns/cycle | new + delete ns/cycle | pool wins by |
+|---|---|---|---|
+| 8,192 | **5.56** | 29.53 | **5.31x** |
+| 65,536 | **7.02** | 30.55 | **4.35x** |
+
+Two honest qualifications. The pool runs with generation checking **on**,
+because that is how it ships; the comparison is against a validating pool, not a
+bare free list. And macOS's allocator has a per-thread cache for small
+allocations that this pattern suits well, so 5x here is not comparable to
+figures quoted against glibc.
+
+The two working-set sizes are there because a small one flatters `malloc`: the
+gap narrows from 5.31x to 4.35x as the live set grows past the cache, which is
+the opposite of what a too-small benchmark would show.
+
+### Prefault
+
+| | minor faults |
+|---|---|
+| during pool construction (the prefault itself) | 513 |
+| touching all 262,144 slots afterwards | **0** |
+
+Zero is the number the prefault claim makes, so it is checked rather than
+asserted. The first version of this measured 32 faults; they were the harness's
+own handle vector, not the pool, and the vector is now allocated and touched
+before the measurement window opens.
+
+## Price ladder: what each path costs
+
+```
+./build/release/bench/bench_ladder --runs 5
+```
+
+1,277 levels in the window (the measured QQQ peak) in every row; only the
+overflow population changes. 20,000,000 lookups per round.
+
+| overflow levels | window ns | overflow ns | fallback slower by |
+|---|---|---|---|
+| 64 | 0.90 | 4.36 | 4.84x |
+| **544** (measured QQQ) | **0.90** | **7.10** | **7.85x** |
+| 4,096 | 0.90 | 8.60 | 9.52x |
+| 32,768 | 0.90 | 12.48 | 13.84x |
+| 262,144 | 0.90 | 16.56 | 18.41x |
+
+**The window column does not move.** 0.90 ns regardless of how much is in the
+overflow map -- a bitset test and an array load, which is what O(1) means here.
+The map grows as log n, from 4.36 to 16.56 ns.
+
+At the measured overflow population the fallback is 7.85x slower, and it takes
+0.80% of lookups (see the profiling section).
+
+Two harness bugs were fixed to get this number, both recorded in DESIGN.md
+because each produced a plausible wrong answer: indexing the price sequence with
+`%` put an integer division in both paths and collapsed the ratio to 1.24x, and
+the far prices underflowed `Price` at large overflow counts, became the best bid
+and dragged the window off the near levels. The benchmark now checks that the
+levels landed where it intended before timing anything.
+
+## Cancel from the middle of a queue is O(1)
+
+```
+./build/release/bench/bench_cancel --reps 300
+```
+
+One price level, all orders at the same price, cancelling at a given position.
+Mean ns over 300 rebuild-and-cancel repetitions.
+
+| depth | head | 25% | middle | tail |
+|---|---|---|---|---|
+| 64 | 30.7 | 28.0 | 28.9 | 26.8 |
+| 1,024 | 16.1 | 14.4 | 12.8 | 10.8 |
+| 16,384 | 21.1 | 25.7 | 21.3 | 11.3 |
+| 100,000 | **26.0** | 19.2 | 17.1 | 14.9 |
+
+Flat in both depth and position, at 100,000 deep as at 64. That is the O(1)
+claim measured rather than asserted.
+
+The same benchmark under identity hashing is how the order index's unbounded
+deletion was found -- 54,878 ns to cancel from the head of a 100,000 deep level.
+DESIGN.md section 22 has the account.
+
+## Order record size
+
+```
+ITCH_ORDER_PAD_BYTES=N, same workload, nothing else changed
+```
+
+| sizeof(Order) | per 128 B line | power of two | ops/s |
+|---|---|---|---|
+| **32** | 4 | yes | **59,447,200** |
+| 40 | 3 | no | 56,587,736 |
+| 56 | 2 | no | 57,262,185 |
+| **64** | 2 | yes | **59,041,960** |
+
+Power-of-two sizes beat non-power-of-two by 2-4%. Density does not matter:
+64 bytes at two per cache line is as fast as 32 at four. The access pattern is a
+random lookup through a handle, never a scan of adjacent orders. DESIGN.md
+section 21 records that half of the original rationale was wrong.
+
+## Order reference hash
+
+Steady state, real workloads, identity versus splitmix64:
+QQQ **+6.91%**, AMD **+3.22%**, AAPL **+7.88%** in identity's favour, despite
+identity doing three to four times more probes per operation.
+
+Deletion, `bench_cancel`, cancelling from the head:
+
+| depth | identity | splitmix64 |
+|---|---|---|
+| 1,024 | 1,220 ns | 16 ns |
+| 16,384 | 8,843 ns | 21 ns |
+| 100,000 | **54,879 ns** | **26 ns** |
+
+Sequential keys form one unbroken probe cluster and backward-shift deletion
+walks it. Deletes are 43% of this feed. **splitmix64 ships.**
+
+## Order index sizing
+
+The throughput optimum is a load factor, not a size, confirmed independently on
+two symbols with a 5.6x difference in peak live orders.
+
+QQQ (7,679 peak live):
 
 | entries | load factor | ops/s |
 |---|---|---|
@@ -327,47 +482,45 @@ The index was sized from the order pool's capacity, giving a 524,288-entry,
 | 262,144 | 2.7% | 24,844,157 |
 | 524,288 | 1.3% | 20,698,310 |
 
-There is an optimum and both sides of it are worse. Default changed to 131,072
-entries. At the busiest measured peak (15,286 live orders on AMD) that is an
-11.7% load factor, inside the flat part of the curve.
+AAPL (42,774 peak live):
 
-### Handle validation
+| entries | load factor | ops/s |
+|---|---|---|
+| 131,072 | 32.6% | 37,168,362 |
+| 262,144 | 16.3% | 44,490,716 |
+| **524,288** | **8.2%** | **47,993,190** |
+| 1,048,576 | 4.1% | 43,600,107 |
 
-`Pool<Order>::deref_checked` was 15.6% of the profile after the first fix. It
-did four checks; two were provably redundant (the null check is subsumed by the
-bounds check, the liveness check by the generation match). Reduced to two, with
-no loss of detection: all 17 pool tests, including null, out-of-range,
-use-after-free, double-free and slot-reuse, unchanged and passing.
+Both peak between 5% and 9%, and both sides of the optimum are worse.
+`index_entries_for(peak)` encodes it.
 
-### Combined
+## Profiling: before and after
+
+Two bottlenecks found by profiling. Reasoning in DESIGN.md section 20.
 
 | | before | after | |
 |---|---|---|---|
-| FlatBook, 475k-op workload | 20,010,189 ops/s | 28,803,939 ops/s | 1.44x |
-| index sizing alone | 20,010,189 | 26,492,637 | 1.32x |
-| handle validation alone | 26,811,927-27,306,964 | 29,717,177-30,098,291 | 1.11x |
+| index sized from pool capacity, not live set | 20,010,189 ops/s | 26,492,637 | **1.32x** |
+| handle validation: 4 branches -> 2 | 26,811,927-27,306,964 | 29,717,177-30,098,291 | **1.11x** |
 
-### One fix that did not pay, recorded because it did not
+Both measured on the 475k-operation workload they were found with.
 
-Slimming the assertion call sites to let `deref_checked` inline showed
-26.5 -> 27.7 million ops/s on one run, a 4.5% win. Three further runs of each
-version gave 26.8 / 27.3 / 27.1 against 27.2 to 27.7 -- overlapping -- and the
-binary contained the same number of out-of-line `deref_checked` symbols either
-way. It was noise, and the change was reverted rather than kept with a number
-attached.
+A third change was tried and **reverted**: slimming the assertion call sites to
+let `deref_checked` inline showed 4.5% on one run, then overlapping ranges over
+three more runs of each version, with the same out-of-line symbol count either
+way. It was noise, and is recorded as noise rather than kept with a number.
 
 ## Not measured yet
 
 Listed so that their absence is explicit rather than quiet.
 
-- All of the above over the complete session rather than a 490 MB prefix.
 - Book update p99 and p99.9. Measured here but **scheduler-dominated and not
   quotable**; see above. **Linux box**, with `isolcpus` and `nohz_full`.
-- Cache-miss and branch-miss counters explaining the 1.46x and 2.29x ratios.
-  **Linux box.**
-- The 24-byte order record variant, against the 32-byte one in use.
-- `IndexHash::Identity` against `IndexHash::Mixed`. Both are built and tested;
-  neither is benchmarked yet.
-- Parse throughput on its own, without a decompressor in the loop.
-- Matching engine throughput and latency.
-- Before/after for the two bottlenecks found by profiling.
+- Cache-miss and branch-miss counters explaining the 2.04x and 3.54x ratios.
+  The ratios are measured; the mechanism behind them is currently reasoned, not
+  counted. **Linux box.**
+- Matching engine throughput and latency. The engine is correctness-tested
+  against both book implementations but has no benchmark.
+- The 24-byte order record: attempted and found unreachable, since the stored
+  reference is load-bearing for index erase and for the canonical digest.
+  DESIGN.md section 21.

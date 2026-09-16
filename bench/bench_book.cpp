@@ -27,6 +27,12 @@
 //     thing measured.
 //   - all three books are digested at the end of every run and required to
 //     agree, so a fast wrong answer cannot win.
+//   - with --only, one implementation is measured alone in its own process.
+//     That matters: measuring all three in one process, interleaved, holds
+//     conditions equal for the comparison but depresses every absolute, because
+//     MapBook's allocations evict the other two's working sets between rounds.
+//     The interleaved run is the fair comparison; the isolated run is the
+//     honest absolute. Both are reported and labelled.
 
 #include <algorithm>
 #include <cstdio>
@@ -174,6 +180,7 @@ std::string floor_note(u32 value, u64 resolution) {
 int main(int argc, char** argv) {
     std::string corpus;
     std::string symbol = "QQQ";
+    std::string only;
     int         runs = 5;
     double      rate = 0;
 
@@ -181,6 +188,8 @@ int main(int argc, char** argv) {
         const std::string a = argv[i];
         if (a == "--symbol" && i + 1 < argc) {
             symbol = argv[++i];
+        } else if (a == "--only" && i + 1 < argc) {
+            only = argv[++i];
         } else if (a == "--runs" && i + 1 < argc) {
             runs = std::atoi(argv[++i]);
         } else if (a == "--rate" && i + 1 < argc) {
@@ -229,6 +238,43 @@ int main(int argc, char** argv) {
                 commas(w.adds).c_str(), commas(w.executes).c_str(),
                 commas(w.cancels).c_str(), commas(w.deletes).c_str(),
                 commas(w.replaces).c_str());
+
+    // --only: one implementation, alone in this process, no cross-contamination.
+    // This is where the absolute throughput number comes from.
+    if (!only.empty()) {
+        Result r;
+        std::vector<double> rounds;
+        u64 junk = 0;
+        if (only == "flat") {
+            r.name = "FlatBook";
+            for (int i = 0; i < 2; ++i) do_not_optimize(one_pass<FlatBook>(w, junk));
+            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<FlatBook>(w, r.digest));
+        } else if (only == "avl") {
+            r.name = "AvlBook";
+            for (int i = 0; i < 2; ++i) do_not_optimize(one_pass<AvlBook>(w, junk));
+            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<AvlBook>(w, r.digest));
+        } else if (only == "map") {
+            r.name = "MapBook";
+            for (int i = 0; i < 2; ++i) do_not_optimize(one_pass<MapBook>(w, junk));
+            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<MapBook>(w, r.digest));
+        } else {
+            std::fprintf(stderr, "unknown implementation '%s'\n", only.c_str());
+            return 2;
+        }
+        summarise(r, std::move(rounds));
+        std::printf("\nisolated: %s alone in this process, %d rounds\n\n", r.name.c_str(),
+                    runs);
+        std::printf("%-12s %14s %10s %14s %14s\n", "", "median ops/s", "ns/op", "slowest",
+                    "fastest");
+        std::printf("%s\n", std::string(68, '-').c_str());
+        std::printf("%-12s %14s %10.1f %14s %14s\n", r.name.c_str(),
+                    commas(static_cast<u64>(r.ops_per_sec)).c_str(), r.ns_per_op,
+                    commas(static_cast<u64>(r.ops_lo)).c_str(),
+                    commas(static_cast<u64>(r.ops_hi)).c_str());
+        std::printf("digest       %016llx\n",
+                    static_cast<unsigned long long>(r.digest));
+        return 0;
+    }
 
     // Warmup, discarded. Two full passes each, so caches, branch predictors and
     // the CPU's frequency governor have all settled before anything is timed.
@@ -289,8 +335,10 @@ int main(int argc, char** argv) {
     Samples floor_s{w.ops.size() / 2};
     harness_floor(w.ops.size() / 2, rate, floor_s);
 
-    std::printf("\nthroughput, closed loop, %d interleaved rounds\n", runs);
-    std::printf("median reported; the spread is shown because on this machine it is wide\n\n");
+    std::printf("\nthroughput, closed loop, %d INTERLEAVED rounds, one process\n", runs);
+    std::printf("equal conditions for the comparison, but every absolute here is\n");
+    std::printf("depressed by the other two implementations sharing the caches.\n");
+    std::printf("run with --only for an isolated absolute.\n\n");
     std::printf("%-12s %14s %10s %14s %14s %8s\n", "", "median ops/s", "ns/op",
                 "slowest", "fastest", "vs Flat");
     std::printf("%s\n", std::string(78, '-').c_str());

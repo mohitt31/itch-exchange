@@ -6,3 +6,7 @@ endfunction()
 
 itch_add_bench(bench_book)
 itch_add_bench(bench_profile)
+itch_add_bench(bench_parse)
+itch_add_bench(bench_pool)
+itch_add_bench(bench_ladder)
+itch_add_bench(bench_cancel)

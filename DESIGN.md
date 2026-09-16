@@ -864,6 +864,138 @@ correct. Neither changed a data structure, and neither was guessable -- the
 index sweep in particular found an optimum whose shape contradicted the
 hypothesis that sent me looking.
 
+## 21. The order record: a claim of mine that measurement killed
+
+`Order` is 32 bytes, and section 18 justified that two ways: a power of two so
+indexing is a shift rather than a multiply, and four per 128-byte cache line.
+
+Both were measurable, so both were measured. A compile-time knob
+(`ITCH_ORDER_PAD_BYTES`) appends unused bytes to `Order`, changing its size and
+nothing else, and the same workload runs against each.
+
+| sizeof(Order) | per 128 B line | power of two | ops/s |
+|---|---|---|---|
+| **32** | 4 | yes | **59,447,200** |
+| 40 | 3 | no | 56,587,736 |
+| 56 | 2 | no | 57,262,185 |
+| **64** | 2 | yes | **59,041,960** |
+
+**The power-of-two claim holds.** 32 and 64 both beat 40 and 56 by 2-4%, and the
+pattern is identical under both hash functions, so it is the indexing arithmetic
+and not a cache effect.
+
+**The cache-line claim does not.** 64 bytes, at two orders per line instead of
+four, is as fast as 32. The reason is obvious once the measurement forces you to
+look: every access to an order is a random lookup through a handle. Nothing ever
+walks adjacent orders. A second order sharing a cache line is an order that will
+never be read on that fetch, so packing four of them in buys nothing.
+
+`Order` stays at 32 bytes -- it is a power of two and smaller is not worse -- but
+for one reason rather than two, and the comment in `records.hpp` now says so.
+
+### The 24-byte variant, and why it is not reachable
+
+Dropping the stored `OrderRef` would give 24 bytes. It is load-bearing in two
+places: `reduce()` needs it to erase from the order index, and `book_digest()`
+needs it to enumerate a level's queue in a form that is comparable across
+implementations (handle indices are allocation-order dependent and are not).
+Either replacement -- passing the ref down every path, or a parallel array --
+gives back what the 8 bytes saved. Recorded as attempted, not as untried.
+
+## 22. The order reference hash: the obvious answer was wrong twice
+
+NASDAQ order references are near-sequential, which made identity hashing
+plausible under linear probing. Both were built behind the same template
+parameter from the start, precisely so this could be settled by measurement.
+It took three measurements to get to the right answer, and the first two both
+pointed the wrong way.
+
+### Measurement 1: identity does far more probes and is still faster
+
+| symbol | peak live | splitmix64 probes/op | identity probes/op | identity throughput |
+|---|---|---|---|---|
+| SPY | 2,985 | 0.052 | 0.195 | -- |
+| QQQ | 7,679 | 0.162 | 0.596 | **+6.91%** |
+| AMD | 15,286 | 0.382 | 1.282 | **+3.22%** |
+| AAPL | 42,774 | 1.510 | 4.323 | **+7.88%** |
+
+Identity does three to four times more probes on every symbol and wins on every
+symbol. Near-sequential keys land in adjacent slots, so a probe chain walks
+forward inside a cache line already paid for, while splitmix64's shorter chains
+are random and each step is a likely miss. Counting probes measures the wrong
+thing; what costs is where they land.
+
+On that evidence identity became the default.
+
+### Measurement 2: at the right table size it stops mattering
+
+Sweeping the index size on AAPL, the densest symbol measured:
+
+| entries | load factor | identity | splitmix64 |
+|---|---|---|---|
+| 131,072 | 32.6% | 40,203,013 | 37,168,362 |
+| 262,144 | 16.3% | 44,678,252 | 44,490,716 |
+| **524,288** | **8.2%** | **47,897,214** | **47,993,190** |
+| 1,048,576 | 4.1% | 45,500,697 | 43,600,107 |
+
+At the optimum the two are within noise, with splitmix64 marginally ahead.
+Identity's advantage appears only when the table is mis-sized. So sizing the
+table matters more than the hash does, and the hash choice is mostly insurance
+against getting the size wrong.
+
+The optimum is a **load factor, not a size**: it appeared at 5.9% on a symbol
+peaking at 7,679 live orders and 8.2% on one peaking at 42,774. That is a rule,
+so it is now code -- `index_entries_for(peak_live_orders)`.
+
+### Measurement 3: identity has an unbounded delete, and it is disqualifying
+
+This one came from somewhere else entirely. `bench_cancel` exists to test a
+different claim -- that cancelling from the middle of a queue is O(1) -- by
+cancelling at various depths and positions. Under identity hashing:
+
+| depth | head | 25% | middle | tail |
+|---|---|---|---|---|
+| 64 | 126.9 | 92.8 | 70.6 | 24.9 |
+| 1,024 | 1,220.4 | 626.8 | 383.3 | 14.2 |
+| 16,384 | 8,843.2 | 6,733.4 | 4,436.8 | 13.6 |
+| 100,000 | **54,878.8** | 40,813.1 | 27,092.0 | 14.7 |
+
+Under splitmix64, same harness, same runs:
+
+| depth | head | 25% | middle | tail |
+|---|---|---|---|---|
+| 64 | 30.7 | 28.0 | 28.9 | 26.8 |
+| 1,024 | 16.1 | 14.4 | 12.8 | 10.8 |
+| 16,384 | 21.1 | 25.7 | 21.3 | 11.3 |
+| 100,000 | **26.0** | 19.2 | 17.1 | 14.9 |
+
+**The cost is not in the queue at all.** Unlinking an order is a fixed number of
+field writes either way. It is the order index: sequential keys under identity
+hashing form one unbroken probe cluster, and backward-shift deletion has to walk
+that cluster from the erased slot to the next empty one. Erase the front of a
+100,000 key cluster and you walk 100,000 entries.
+
+Deletes are **43% of this feed**. A few percent of steady-state throughput is
+not worth an unbounded tail on the second most common operation in the system.
+**splitmix64 is the default.**
+
+### Why the probe counter did not catch it
+
+`probes_per_op` looked fine for identity -- 0.596 on QQQ. It was blind, because
+`erase_at`'s shift loop never incremented the probe counter. The metric measured
+insert and lookup and silently ignored the operation with the pathological case.
+
+The index now counts `shifts()` and `longest_shift()` separately, because they
+are a different cost with a different worst case and folding them into one
+number is exactly how this hid.
+
+The wider lesson, and the reason this section is the longest in the file: two
+independent measurements agreed on an answer that a third, looking at a
+different question entirely, showed was wrong. Steady-state throughput on real
+data said identity. Table sizing said it barely mattered. Only a benchmark
+written to test an unrelated claim about queue cancellation exposed a worst case
+that a latency-sensitive system cannot accept.
+
 ---
 
 ## Open, to be settled by measurement
@@ -878,8 +1010,9 @@ preference. Each will be resolved in the slice named.
 - ~~**Tick alignment**~~ -- settled by measurement, section 15. Sub-penny prices
   are 0.001% to 0.003% of adds, so penny indexing works and the remainder goes
   to the overflow map.
-- **Order record width** — 32 bytes as built, versus 24 bytes by dropping the
-  stored `OrderRef`. 32 is a power of two, so indexing is a shift rather than a
-  multiply; 24 fits five per 128-byte line instead of four. To be benchmarked.
-- **Order reference hash** — `Identity` versus `Mixed` are both built and both
-  tested (section 18). To be benchmarked; the number decides.
+- ~~**Order record width**~~ -- settled by measurement, section 21. The
+  power-of-two claim held and the cache-line claim did not; 24 bytes is not
+  reachable because the stored reference is load-bearing.
+- ~~**Order reference hash**~~ -- settled by measurement, section 22. Identity
+  is the default, but the real finding is that sizing the table matters more
+  than the hash does.
