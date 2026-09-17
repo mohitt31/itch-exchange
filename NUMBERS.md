@@ -191,7 +191,14 @@ in CI as hygiene, not as evidence that any concurrency was verified.
 
 Input: `01302019.NASDAQ_ITCH50.gz`, the complete 30 January 2019 NASDAQ
 TotalView-ITCH 5.0 session. 4,764,426,091 bytes compressed, `gzip -t` clean.
-Metadata including the sha256 is in `data/CORPUS.json`.
+
+```
+sha256 8c97b5b13bc451c012c2466fb7e258da134dab29aa47b67fe7b0088c78e870be
+```
+
+Recorded here and not only in `data/CORPUS.json`, which is gitignored along with
+the corpus itself -- a hash that only exists next to the file it verifies cannot
+verify a copy made anywhere else.
 
 ```
 ./build/release/apps/itch_stats --by-symbol 25 data/01302019.NASDAQ_ITCH50.gz

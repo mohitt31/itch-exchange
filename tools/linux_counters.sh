@@ -40,11 +40,33 @@ fi
 
 mkdir -p measurements
 
+EXPECTED_SHA=8c97b5b13bc451c012c2466fb7e258da134dab29aa47b67fe7b0088c78e870be
+EXPECTED_REPLAY_DIGEST=6344a2790a894bc5
+EXPECTED_BOOK_DIGEST=a0ed37f623c3aa3f
+
+missing=()
+for tool in cmake ninja c++ taskset sha256sum lscpu; do
+  command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+done
+if [ ${#missing[@]} -ne 0 ]; then
+  echo "missing tools: ${missing[*]}" >&2
+  echo "on Ubuntu:" >&2
+  echo "  sudo apt install -y build-essential cmake ninja-build zlib1g-dev util-linux" >&2
+  exit 2
+fi
+
 echo "=============================================================="
 uname -srm
 grep -m1 'model name' /proc/cpuinfo 2>/dev/null | sed 's/^/cpu      /'
 echo "corpus   $CORPUS"
-echo "sha256   $(sha256sum "$CORPUS" | awk '{print $1}')"
+GOT_SHA=$(sha256sum "$CORPUS" | awk '{print $1}')
+echo "sha256   $GOT_SHA"
+if [ "$GOT_SHA" != "$EXPECTED_SHA" ]; then
+  echo "error: corpus hash does not match NUMBERS.md ($EXPECTED_SHA)." >&2
+  echo "       Every figure this script produces would be for a different input." >&2
+  exit 1
+fi
+echo "         matches NUMBERS.md"
 echo "symbol   $SYMBOL"
 echo "compiler $(c++ --version | head -1)"
 echo
@@ -53,6 +75,20 @@ printf '  isolcpus   %s\n' "$(cat /sys/devices/system/cpu/isolated 2>/dev/null |
 printf '  nohz_full  %s\n' "$(cat /sys/devices/system/cpu/nohz_full 2>/dev/null || echo '(none)')"
 printf '  governor   %s\n' "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo 'unknown')"
 printf '  turbo      %s\n' "$(cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || echo 'n/a')"
+printf '  on AC      %s\n' "$(cat /sys/class/power_supply/A*/online 2>/dev/null | head -1 || echo 'unknown')"
+echo
+echo "cpu topology (hybrid Intel parts have P-cores with higher MAXMHZ than E-cores):"
+lscpu -e=CPU,CORE,MAXMHZ 2>/dev/null | sed 's/^/  /'
+if [ -n "$CPU" ]; then
+  core_max=$(lscpu -e=CPU,MAXMHZ 2>/dev/null | awk -v c="$CPU" '$1==c{print $2}')
+  top_max=$(lscpu -e=CPU,MAXMHZ 2>/dev/null | awk 'NR>1{print $2}' | sort -n | tail -1)
+  if [ -n "$core_max" ] && [ "$core_max" != "$top_max" ]; then
+    echo
+    echo "  WARNING: cpu $CPU has MAXMHZ $core_max, below the fastest core's $top_max."
+    echo "  On a hybrid part that is an E-core, and every number would be for the"
+    echo "  wrong core. Pick a CPU with the highest MAXMHZ."
+  fi
+fi
 if [ -z "$(cat /sys/devices/system/cpu/isolated 2>/dev/null)" ]; then
   echo
   echo "  WARNING: no isolated CPU. The tail numbers below will be as"
@@ -71,25 +107,27 @@ echo "### building release"
 cmake --preset release >/dev/null && cmake --build --preset release >/dev/null
 echo done
 
-# perf needs kernel.perf_event_paranoid <= 1 for most of these.
-PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo 3)
-if [ "$PARANOID" -gt 1 ]; then
+# The counters are opened by bench_book itself with exclude_kernel set, which
+# needs kernel.perf_event_paranoid <= 2. Ubuntu ships 4.
+PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo 4)
+if [ "$PARANOID" -gt 2 ]; then
   echo
-  echo "note: kernel.perf_event_paranoid is $PARANOID; counters need <= 1."
-  echo "      sudo sysctl kernel.perf_event_paranoid=1"
+  echo "kernel.perf_event_paranoid is $PARANOID; counters need <= 2. Setting it for"
+  echo "this boot only:"
+  sudo sysctl -w kernel.perf_event_paranoid=2
 fi
 
-EVENTS=cycles,instructions,cache-references,cache-misses,branches,branch-misses,L1-dcache-load-misses,dTLB-load-misses
-
 echo
-echo "### 1. counters per book implementation"
-echo "this is the number that turns 2.11x and 3.81x from measured into explained"
+echo "### 1. counters per book implementation, timed region only"
+echo "this is what turns 2.11x and 3.81x from measured into explained."
+echo "NOT perf stat around the process: building the workload inflates 4.7 GB and"
+echo "dispatches 368M messages first, so process-wide counters would be ~99% gzip."
 for impl in flat avl map; do
   echo
   echo "--- $impl ---"
-  $PIN perf stat -e "$EVENTS" -- \
-    ./build/release/bench/bench_book --only "$impl" --symbol "$SYMBOL" --runs 5 "$CORPUS" \
-    2>&1 | tee "measurements/linux_perf_${impl}.txt" | grep -E "ops/s|cycles|instructions|cache-|branch|dTLB|elapsed"
+  $PIN ./build/release/bench/bench_book --only "$impl" --counters --symbol "$SYMBOL" \
+    --runs 7 "$CORPUS" | tee "measurements/linux_counters_${impl}.txt" \
+    | grep -E "median|^FlatBook|^AvlBook|^MapBook|/op|IPC|multiplexed|unavailable"
 done
 
 echo
@@ -109,6 +147,13 @@ echo
 echo "### 4. replay determinism, against the macOS digest"
 $PIN ./build/release/apps/itch_replay --symbol "$SYMBOL" --runs 10 "$CORPUS" \
   | tee measurements/linux_replay.txt | tail -4
+GOT_DIGEST=$(awk '/^digest/{print $2}' measurements/linux_replay.txt)
+if [ "$GOT_DIGEST" = "$EXPECTED_REPLAY_DIGEST" ]; then
+  echo "replay digest matches the macOS arm64 run: $GOT_DIGEST"
+else
+  echo "REPLAY DIGEST MISMATCH: got $GOT_DIGEST, macOS arm64 gave $EXPECTED_REPLAY_DIGEST"
+  echo "replay depends on something it should not. That is a bug, not a measurement."
+fi
 echo
 echo "the digest above must match the one in NUMBERS.md. A different answer on a"
 echo "different architecture would mean the replay depends on something it should"

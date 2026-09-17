@@ -81,14 +81,20 @@ struct Result {
 // both defeats dead-code elimination and proves the work happened, since a book
 // that was optimised away cannot produce one.
 template <class Book>
-double one_pass(const Workload& w, u64& digest_out) {
+double one_pass(const Workload& w, u64& digest_out, PerfCounters* counters = nullptr) {
     Book book;
     clobber_memory();
+    if (counters != nullptr) {
+        counters->start();
+    }
     const u64 t0 = now_ns();
     for (const WorkloadOp& op : w.ops) {
         apply(book, op);
     }
     const u64 t1 = now_ns();
+    if (counters != nullptr) {
+        counters->stop();
+    }
     clobber_memory();
 
     const u64 d = itch::book::book_digest(book);
@@ -183,6 +189,7 @@ int main(int argc, char** argv) {
     std::string corpus;
     std::string symbol = "QQQ";
     std::string only;
+    bool        want_counters = false;
     int         runs = 5;
     double      rate = 0;
 
@@ -192,6 +199,8 @@ int main(int argc, char** argv) {
             symbol = argv[++i];
         } else if (a == "--only" && i + 1 < argc) {
             only = argv[++i];
+        } else if (a == "--counters") {
+            want_counters = true;
         } else if (a == "--runs" && i + 1 < argc) {
             runs = std::atoi(argv[++i]);
         } else if (a == "--rate" && i + 1 < argc) {
@@ -247,18 +256,20 @@ int main(int argc, char** argv) {
         Result r;
         std::vector<double> rounds;
         u64 junk = 0;
+        PerfCounters  pc;
+        PerfCounters* cp = (want_counters && pc.available()) ? &pc : nullptr;
         if (only == "flat") {
             r.name = "FlatBook";
             for (int i = 0; i < 2; ++i) do_not_optimize(one_pass<FlatBook>(w, junk));
-            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<FlatBook>(w, r.digest));
+            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<FlatBook>(w, r.digest, cp));
         } else if (only == "avl") {
             r.name = "AvlBook";
             for (int i = 0; i < 2; ++i) do_not_optimize(one_pass<AvlBook>(w, junk));
-            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<AvlBook>(w, r.digest));
+            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<AvlBook>(w, r.digest, cp));
         } else if (only == "map") {
             r.name = "MapBook";
             for (int i = 0; i < 2; ++i) do_not_optimize(one_pass<MapBook>(w, junk));
-            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<MapBook>(w, r.digest));
+            for (int i = 0; i < runs; ++i) rounds.push_back(one_pass<MapBook>(w, r.digest, cp));
         } else {
             std::fprintf(stderr, "unknown implementation '%s'\n", only.c_str());
             return 2;
@@ -275,6 +286,34 @@ int main(int argc, char** argv) {
                     commas(static_cast<u64>(r.ops_hi)).c_str());
         std::printf("digest       %016llx\n",
                     static_cast<unsigned long long>(r.digest));
+
+        if (want_counters) {
+            const CounterValues c = pc.totals();
+            if (!c.ok) {
+                std::printf("\ncounters     unavailable: %s\n", c.why_not.c_str());
+            } else {
+                // Per book operation, over exactly the timed loops and nothing
+                // else. These are what explain a ratio between implementations.
+                const double ops = static_cast<double>(w.ops.size()) * runs;
+                const auto per = [&](u64 v) { return static_cast<double>(v) / ops; };
+                std::printf("\ncounters, timed region only, per book operation (%d rounds)\n",
+                            runs);
+                std::printf("  cycles/op             %10.2f\n", per(c.cycles));
+                std::printf("  instructions/op       %10.2f\n", per(c.instructions));
+                std::printf("  IPC                   %10.3f\n",
+                            c.cycles ? static_cast<double>(c.instructions) /
+                                           static_cast<double>(c.cycles)
+                                     : 0.0);
+                std::printf("  branch-misses/op      %10.4f\n", per(c.branch_misses));
+                std::printf("  LLC-misses/op         %10.4f\n", per(c.llc_misses));
+                std::printf("  L1d-load-misses/op    %10.4f\n", per(c.l1d_misses));
+                std::printf("  dTLB-load-misses/op   %10.4f\n", per(c.dtlb_misses));
+                if (c.worst_running_fraction < 1.0) {
+                    std::printf("  multiplexed: worst event ran %.1f%% of the time, scaled\n",
+                                100.0 * c.worst_running_fraction);
+                }
+            }
+        }
         return 0;
     }
 

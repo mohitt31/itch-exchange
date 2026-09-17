@@ -23,7 +23,16 @@
 #include <vector>
 
 #include <cstdio>
+#include <cstring>
 #include <time.h>
+
+#if defined(__linux__)
+#include <linux/perf_event.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <cerrno>
+#endif
 
 namespace itch::bench {
 
@@ -75,6 +84,175 @@ inline void do_not_optimize(const T& value) {
 }
 
 inline void clobber_memory() { asm volatile("" : : : "memory"); }
+
+// Hardware counters scoped to exactly the timed region. Linux only.
+//
+// Why not `perf stat` around the process: bench_book builds its workload by
+// inflating the 4.7 GB corpus and dispatching 368 million messages, about thirty
+// seconds, and then times the book for a fraction of a second. Process-wide
+// counters would be almost entirely gzip and would still look like they
+// explained the ratios between book implementations. These are opened by the
+// benchmark itself and enabled only around the loop being measured.
+//
+// Events are opened independently rather than as one group. A laptop PMU has
+// few general-purpose counters and a group is scheduled all or nothing; single
+// events are multiplexed instead, and the enabled/running times are read back so
+// the scaling can be applied and reported rather than hidden.
+//
+// On hybrid Intel parts the generic hardware events must name the P-core PMU in
+// the top 32 bits of config, or they may count nothing on the core the thread is
+// pinned to. That type is read from sysfs when it exists.
+struct CounterValues {
+    bool        ok = false;
+    std::string why_not;
+    u64         cycles = 0;
+    u64         instructions = 0;
+    u64         branch_misses = 0;
+    u64         llc_misses = 0;
+    u64         l1d_misses = 0;
+    u64         dtlb_misses = 0;
+    double      worst_running_fraction = 1.0;  // < 1 means multiplexed and scaled
+};
+
+#if defined(__linux__)
+class PerfCounters {
+public:
+    PerfCounters() {
+        const u64 hybrid = hybrid_core_type();
+        const u64 cache_l1d_read_miss = PERF_COUNT_HW_CACHE_L1D |
+                                        (PERF_COUNT_HW_CACHE_OP_READ << 8) |
+                                        (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
+        const u64 cache_dtlb_read_miss = PERF_COUNT_HW_CACHE_DTLB |
+                                         (PERF_COUNT_HW_CACHE_OP_READ << 8) |
+                                         (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
+        add(PERF_TYPE_HARDWARE, hybrid | PERF_COUNT_HW_CPU_CYCLES, &CounterValues::cycles);
+        add(PERF_TYPE_HARDWARE, hybrid | PERF_COUNT_HW_INSTRUCTIONS,
+            &CounterValues::instructions);
+        add(PERF_TYPE_HARDWARE, hybrid | PERF_COUNT_HW_BRANCH_MISSES,
+            &CounterValues::branch_misses);
+        add(PERF_TYPE_HARDWARE, hybrid | PERF_COUNT_HW_CACHE_MISSES,
+            &CounterValues::llc_misses);
+        add(PERF_TYPE_HW_CACHE, hybrid | cache_l1d_read_miss, &CounterValues::l1d_misses);
+        add(PERF_TYPE_HW_CACHE, hybrid | cache_dtlb_read_miss, &CounterValues::dtlb_misses);
+    }
+
+    ~PerfCounters() {
+        for (Ev& e : evs_) {
+            if (e.fd >= 0) {
+                ::close(e.fd);
+            }
+        }
+    }
+
+    PerfCounters(const PerfCounters&) = delete;
+    PerfCounters& operator=(const PerfCounters&) = delete;
+
+    [[nodiscard]] bool available() const noexcept { return opened_ > 0; }
+    [[nodiscard]] const std::string& error() const noexcept { return error_; }
+
+    void start() {
+        for (Ev& e : evs_) {
+            if (e.fd >= 0) {
+                ::ioctl(e.fd, PERF_EVENT_IOC_RESET, 0);
+                ::ioctl(e.fd, PERF_EVENT_IOC_ENABLE, 0);
+            }
+        }
+    }
+
+    // Stops and adds this region's scaled counts to the running totals.
+    void stop() {
+        for (Ev& e : evs_) {
+            if (e.fd >= 0) {
+                ::ioctl(e.fd, PERF_EVENT_IOC_DISABLE, 0);
+            }
+        }
+        for (Ev& e : evs_) {
+            if (e.fd < 0) {
+                continue;
+            }
+            u64 buf[3] = {0, 0, 0};  // value, time_enabled, time_running
+            if (::read(e.fd, buf, sizeof(buf)) != static_cast<ssize_t>(sizeof(buf))) {
+                continue;
+            }
+            double scaled = static_cast<double>(buf[0]);
+            if (buf[2] != 0 && buf[2] < buf[1]) {
+                const double frac = static_cast<double>(buf[2]) / static_cast<double>(buf[1]);
+                scaled /= frac;
+                worst_ = frac < worst_ ? frac : worst_;
+            }
+            totals_.*(e.slot) += static_cast<u64>(scaled);
+        }
+    }
+
+    [[nodiscard]] CounterValues totals() const {
+        CounterValues v = totals_;
+        v.ok = available();
+        v.why_not = error_;
+        v.worst_running_fraction = worst_;
+        return v;
+    }
+
+private:
+    struct Ev {
+        int                     fd = -1;
+        u64 CounterValues::*    slot = nullptr;
+    };
+
+    static u64 hybrid_core_type() {
+        std::FILE* f = std::fopen("/sys/bus/event_source/devices/cpu_core/type", "r");
+        if (f == nullptr) {
+            return 0;
+        }
+        unsigned long long t = 0;
+        const int n = std::fscanf(f, "%llu", &t);
+        std::fclose(f);
+        return n == 1 ? (static_cast<u64>(t) << 32) : 0;
+    }
+
+    void add(u32 type, u64 config, u64 CounterValues::*slot) {
+        struct perf_event_attr attr;
+        std::memset(&attr, 0, sizeof(attr));
+        attr.size = sizeof(attr);
+        attr.type = type;
+        attr.config = config;
+        attr.disabled = 1;
+        attr.exclude_kernel = 1;  // user space only: works at perf_event_paranoid <= 2
+        attr.exclude_hv = 1;
+        attr.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
+        const long fd = ::syscall(SYS_perf_event_open, &attr, 0, -1, -1, 0);
+        Ev e;
+        e.slot = slot;
+        if (fd < 0) {
+            if (error_.empty()) {
+                error_ = std::string("perf_event_open: ") + std::strerror(errno);
+            }
+        } else {
+            e.fd = static_cast<int>(fd);
+            ++opened_;
+        }
+        evs_.push_back(e);
+    }
+
+    std::vector<Ev> evs_;
+    CounterValues   totals_{};
+    std::string     error_;
+    int             opened_ = 0;
+    double          worst_ = 1.0;
+};
+#else
+class PerfCounters {
+public:
+    [[nodiscard]] bool available() const noexcept { return false; }
+    [[nodiscard]] std::string error() const { return "hardware counters are Linux only"; }
+    void start() {}
+    void stop() {}
+    [[nodiscard]] CounterValues totals() const {
+        CounterValues v;
+        v.why_not = error();
+        return v;
+    }
+};
+#endif
 
 // Deterministic generator for synthetic benchmark flows. Same splitmix64 as the
 // test harness, so a benchmark's workload reproduces exactly from its seed.
