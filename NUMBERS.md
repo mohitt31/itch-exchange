@@ -634,11 +634,20 @@ Listed so that their absence is explicit rather than quiet.
 
 - Book update p99 and p99.9. Measured here but **scheduler-dominated and not
   quotable**; see above. **Linux box**, with `isolcpus` and `nohz_full`.
-- Cache-miss and branch-miss counters explaining the 2.04x and 3.54x ratios.
-  The ratios are measured; the mechanism behind them is currently reasoned, not
-  counted. **Linux box.**
-- Matching engine throughput and latency. The engine is correctness-tested
-  against both book implementations but has no benchmark.
-- The 24-byte order record: attempted and found unreachable, since the stored
+- Cache-miss, branch-miss and TLB counters explaining the **2.11x and 3.81x**
+  ratios. The ratios are measured; the mechanism behind them is currently
+  reasoned, not counted. **Linux box** -- `tools/linux_counters.sh` runs it.
+
+That is the whole list. Everything else this file once deferred has since been
+measured:
+
+- ~~Matching engine throughput~~ -- measured, see above, reported against the
+  fill count at four aggression levels.
+- ~~Parser throughput on its own~~ -- measured, 464M msg/s framing.
+- ~~The 24-byte order record~~ -- attempted and found unreachable: the stored
   reference is load-bearing for index erase and for the canonical digest.
   DESIGN.md section 21.
+- ~~p50 latency~~ -- measured and quotable.
+
+p99 and p99.9 are the other Linux item, recorded in their own section above with
+the evidence for why they are not quotable from a Mac rather than left here.
