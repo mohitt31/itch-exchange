@@ -611,6 +611,18 @@ there is the corpus download, which was symlinked rather than refetched.
 tools/linux_counters.sh data/01302019.NASDAQ_ITCH50.gz QQQ 7
 ```
 
+Before anything else on a new machine, two minutes:
+
+```
+gcc -O1 -o probe tools/probe_counters.c && ./probe
+```
+
+It opens a software event and four hardware events and says which of three
+things is true: counters available, a permission problem
+(`kernel.perf_event_paranoid`), or no PMU exposed at all -- the last being what a
+VM usually looks like. Inside Docker Desktop on this Mac it reports the third.
+Run it before downloading a 4.7 GB corpus onto a machine that cannot count.
+
 Two measurements this machine cannot produce, packaged as one command so they
 are a matter of access rather than of work:
 
